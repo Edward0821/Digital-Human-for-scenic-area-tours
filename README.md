@@ -1,6 +1,6 @@
 # Digital Human for Scenic Area Tours · 景区导览服务 AI 数字人
 
-> 软件工程课程设计（2024级）· 团队 6 人 · 技术负责人：Edward0821
+> 软件工程课程设计（2024级）· 团队 6 人 · 组长：Edward0821
 
 ## 项目简介
 
