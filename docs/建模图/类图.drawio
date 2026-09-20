@@ -1,0 +1,63 @@
+<mxfile host="app.diagrams.net" agent="1.0">
+  <diagram id="UZXLn0xuyhQNEwN6DWGp" name="类图">
+    <mxGraphModel dx="1193" dy="767" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="68FrskOkJbPoOi5O0xf1-1" parent="1" style="shape=rectangle;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=8;fillColor=#DAE8FC;strokeColor=#6C8EBF;rounded=1;fontSize=11;" value="User（用户）&#xa;- id: Long&#xa;- username: String&#xa;- password: String&#xa;- role: String(游客/管理员)&#xa;- created_at: DateTime" vertex="1">
+          <mxGeometry height="130" width="240" x="50.00331298828124" y="90.00331298828124" as="geometry" />
+        </mxCell>
+        <mxCell id="68FrskOkJbPoOi5O0xf1-2" parent="1" style="shape=rectangle;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=8;fillColor=#DAE8FC;strokeColor=#6C8EBF;rounded=1;fontSize=11;" value="Visitor（游客）&#xa;- id: Long (FK User.id)&#xa;- nickname: String&#xa;- interest_tags: List&lt;String&gt;&#xa;- preference: String" vertex="1">
+          <mxGeometry height="120" width="240" x="50.00331298828124" y="250.00331298828124" as="geometry" />
+        </mxCell>
+        <mxCell id="68FrskOkJbPoOi5O0xf1-3" parent="1" style="shape=rectangle;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=8;fillColor=#DAE8FC;strokeColor=#6C8EBF;rounded=1;fontSize=11;" value="ScenicSpot（景点）&#xa;- id: Long&#xa;- name: String&#xa;- intro: Text&#xa;- history: Text&#xa;- culture: Text&#xa;- image_url: String&#xa;- coordinates: String" vertex="1">
+          <mxGeometry height="150" width="240" x="50.0033129882812" y="410.0033129882812" as="geometry" />
+        </mxCell>
+        <mxCell id="68FrskOkJbPoOi5O0xf1-4" parent="1" style="shape=rectangle;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=8;fillColor=#D5E8D4;strokeColor=#82B366;rounded=1;fontSize=11;" value="KnowledgeDoc（知识库文档）&#xa;- id: Long&#xa;- title: String&#xa;- content: Text&#xa;- type: String(讲解词/文史/FAQ)&#xa;- status: String(待处理/已入库/失败)&#xa;- created_at: DateTime" vertex="1">
+          <mxGeometry height="160" width="260" x="370.0033129882812" y="90.00331298828124" as="geometry" />
+        </mxCell>
+        <mxCell id="kcChunk" parent="1" style="shape=rectangle;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=8;fillColor=#D5E8D4;strokeColor=#82B366;rounded=1;fontSize=11;" value="KnowledgeChunk（知识分片）&#xa;- id: Long&#xa;- doc_id: Long (FK KnowledgeDoc.id)&#xa;- chunk_no: Integer&#xa;- content: Text&#xa;- vector_id: String&#xa;- status: String(有效/已清理)" vertex="1">
+          <mxGeometry height="160" width="260" x="370.0033129882812" y="290.0033129882812" as="geometry" />
+        </mxCell>
+        <mxCell id="68FrskOkJbPoOi5O0xf1-5" parent="1" style="shape=rectangle;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=8;fillColor=#D5E8D4;strokeColor=#82B366;rounded=1;fontSize=11;" value="QARecord（问答记录）&#xa;- id: Long&#xa;- session_id: String(匿名会话标识)&#xa;- user_id: Long (可空，匿名为NULL)&#xa;- question: Text&#xa;- answer: Text&#xa;- interaction_type: String(语音/文字/图片)&#xa;- answer_type: String(文字/语音/文字+语音)&#xa;- image_url: String(拍照识景图片)&#xa;- recognized_spot_id: Long (FK ScenicSpot.id)&#xa;- satisfaction: String(好评/差评/未评价)&#xa;- latency_ms: Integer&#xa;- sentiment_score: Double&#xa;- created_at: DateTime" vertex="1">
+          <mxGeometry height="260" width="260" x="370.0033129882812" y="490.0033129882812" as="geometry" />
+        </mxCell>
+        <mxCell id="68FrskOkJbPoOi5O0xf1-6" parent="1" style="shape=rectangle;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=8;fillColor=#D5E8D4;strokeColor=#82B366;rounded=1;fontSize=11;" value="ConversationLog（交互日志）&#xa;- id: Long&#xa;- session_id: String(匿名会话标识)&#xa;- user_id: Long (可空)&#xa;- interaction_type: String(语音/文字/图片)&#xa;- latency_ms: Integer&#xa;- success: Boolean&#xa;- created_at: DateTime" vertex="1">
+          <mxGeometry height="170" width="260" x="370.0033129882812" y="790.0033129882812" as="geometry" />
+        </mxCell>
+        <mxCell id="68FrskOkJbPoOi5O0xf1-7" parent="1" style="shape=rectangle;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=8;fillColor=#FFF2CC;strokeColor=#D6B656;rounded=1;fontSize=11;" value="Route（推荐路线）&#xa;- id: Long&#xa;- name: String&#xa;- spot_ids: List&lt;Long&gt;&#xa;- suitable_tags: List&lt;String&gt;&#xa;- created_at: DateTime" vertex="1">
+          <mxGeometry height="140" width="250" x="710.0033129882812" y="90.00331298828124" as="geometry" />
+        </mxCell>
+        <mxCell id="68FrskOkJbPoOi5O0xf1-8" parent="1" style="shape=rectangle;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=8;fillColor=#FFF2CC;strokeColor=#D6B656;rounded=1;fontSize=11;" value="DigitalHuman（数字人形象）&#xa;- id: Long&#xa;- appearance: String&#xa;- outfit: String&#xa;- voice: String&#xa;- is_active: Boolean(当前启用)&#xa;- updated_at: DateTime" vertex="1">
+          <mxGeometry height="150" width="250" x="710.0033129882812" y="270.0033129882812" as="geometry" />
+        </mxCell>
+        <mxCell id="68FrskOkJbPoOi5O0xf1-9" parent="1" style="shape=rectangle;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=8;fillColor=#E1D5E7;strokeColor=#9673A6;rounded=1;fontSize=11;" value="Report（感受度报告）&#xa;- id: Long&#xa;- period: String(日/周/月)&#xa;- period_start: Date&#xa;- period_end: Date&#xa;- qa_count: Integer&#xa;- satisfaction_rate: Double(好评率)&#xa;- avg_latency_ms: Integer&#xa;- focus_points: Text&#xa;- sentiment_trend: Text&#xa;- service_suggestions: Text&#xa;- generated_at: DateTime" vertex="1">
+          <mxGeometry height="230" width="250" x="710.0033129882812" y="460.0033129882812" as="geometry" />
+        </mxCell>
+        <mxCell id="68FrskOkJbPoOi5O0xf1-10" edge="1" parent="1" source="68FrskOkJbPoOi5O0xf1-1" style="html=1;endArrow=open;endFill=1;" target="68FrskOkJbPoOi5O0xf1-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="68FrskOkJbPoOi5O0xf1-11" edge="1" parent="1" source="68FrskOkJbPoOi5O0xf1-2" style="html=1;endArrow=open;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.3;" target="68FrskOkJbPoOi5O0xf1-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="68FrskOkJbPoOi5O0xf1-12" edge="1" parent="1" source="68FrskOkJbPoOi5O0xf1-2" style="html=1;endArrow=open;endFill=1;exitX=1;exitY=1;entryX=0;entryY=0.3;" target="68FrskOkJbPoOi5O0xf1-6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="68FrskOkJbPoOi5O0xf1-14" edge="1" parent="1" source="68FrskOkJbPoOi5O0xf1-4" style="html=1;endArrow=open;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="kcChunk">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="68FrskOkJbPoOi5O0xf1-15" edge="1" parent="1" source="68FrskOkJbPoOi5O0xf1-7" style="edgeStyle=orthogonal;html=1;endArrow=open;endFill=1;exitX=0;exitY=0.5;entryX=1;entryY=0.47;" target="68FrskOkJbPoOi5O0xf1-3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="680" y="160" />
+              <mxPoint x="680" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="qrSpot" edge="1" parent="1" source="68FrskOkJbPoOi5O0xf1-5" style="html=1;endArrow=open;endFill=1;exitX=0;exitY=0.3;entryX=1;entryY=0.5;" target="68FrskOkJbPoOi5O0xf1-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
