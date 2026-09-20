@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: digital-human-backend-wanghangyu
+  profiles:
+    active: dev
+
+server:
+  port: 8080
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+
+logging:
+  level:
+    com.wanghangyu.digitalhuman: debug
