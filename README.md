@@ -15,7 +15,6 @@
 
 ## 目录结构
 
-```
 ├─ docs/        # 规范文档、接口契约、设计文档
 ├─ backend/     # Spring Boot 3 后端
 ├─ frontend/    # Vue3 前端
