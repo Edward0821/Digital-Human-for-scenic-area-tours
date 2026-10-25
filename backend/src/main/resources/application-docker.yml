@@ -4,8 +4,9 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://scenic-mysql:3306/scenic_tour?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-    username: root
-    password: ${MYSQL_ROOT_PASSWORD}
+    # 业务账号（最小权限，非 root），由 MySQL 容器按 MYSQL_USER/MYSQL_PASSWORD 自动创建并授权
+    username: scenic_app
+    password: ${MYSQL_APP_PASSWORD}
   data:
     redis:
       host: scenic-redis
