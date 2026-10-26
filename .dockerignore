@@ -1,0 +1,9 @@
+.git
+.idea
+**/node_modules
+**/dist
+**/target
+**/.env
+docs
+mysql
+*.md

@@ -1,0 +1,15 @@
+# ---------- 构建层：Maven + JDK 21，依赖走阿里云镜像 ----------
+FROM maven:3.9-eclipse-temurin-21 AS build
+WORKDIR /build
+COPY deploy/maven-settings.xml /usr/share/maven/conf/settings.xml
+COPY backend/pom.xml ./
+RUN mvn -q -B dependency:go-offline
+COPY backend/src ./src
+RUN mvn -q -B package -DskipTests
+
+# ---------- 运行层：仅 JRE ----------
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+COPY --from=build /build/target/*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar", "--spring.profiles.active=docker"]

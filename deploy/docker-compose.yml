@@ -1,0 +1,61 @@
+name: digital-human
+
+services:
+  scenic-mysql:
+    image: mysql:8.0
+    container_name: scenic-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请先在 deploy/.env 设置 MYSQL_ROOT_PASSWORD（参考 .env.example）}
+      # 容器自动建库建业务账号并授权至该库（最小权限：应用不使用 root 连库）
+      MYSQL_DATABASE: scenic_tour
+      MYSQL_USER: scenic_app
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:?请先在 deploy/.env 设置 MYSQL_APP_PASSWORD（参考 .env.example）}
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - ../mysql/init:/docker-entrypoint-initdb.d:ro
+      - scenic-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+    # 生产默认不暴露端口；本机开发用（PDMaas/IDEA 连库）仅绑定回环地址，不对外
+    ports:
+      - "127.0.0.1:3308:3306"
+
+  scenic-redis:
+    image: redis:7-alpine
+    container_name: scenic-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  scenic-backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    container_name: scenic-backend
+    environment:
+      MYSQL_APP_PASSWORD: ${MYSQL_APP_PASSWORD}
+    depends_on:
+      scenic-mysql:
+        condition: service_healthy
+      scenic-redis:
+        condition: service_healthy
+    # 不对外暴露端口：所有流量经 scenic-web 反代（对应"系统稳定/安全"的非功能需求）
+
+  scenic-web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+    container_name: scenic-web
+    ports:
+      - "80:80"
+    depends_on:
+      - scenic-backend
+
+volumes:
+  scenic-mysql-data:
