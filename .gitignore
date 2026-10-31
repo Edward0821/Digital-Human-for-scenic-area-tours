@@ -22,3 +22,7 @@ Thumbs.db
 .env
 # PDMaas 运行日志
 docs/pdmass/log/
+
+# ---- 运行时数据 ----
+# 本地上传目录（分片 tmp + 最终文件），只留 DB 元数据，文件不进库
+backend/uploads/

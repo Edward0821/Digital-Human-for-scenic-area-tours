@@ -9,6 +9,7 @@ import { RouterLink, RouterView } from 'vue-router'
       <nav>
         <RouterLink to="/">游客问答</RouterLink>
         <RouterLink to="/admin">管理后台</RouterLink>
+        <RouterLink to="/files">文件存储</RouterLink>
       </nav>
     </header>
     <main class="main">
