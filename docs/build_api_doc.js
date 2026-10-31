@@ -179,6 +179,8 @@ const REGEX_RULES = [
   [/（对齐课程规范 ?slide[^）]*）/g, ""],
   [/（课程规范 ?slide[^）]*）/g, ""],
   [/，见第五节/g, ""],
+  // 全局约定章在交付版为第 2 章，小节号 1.x 随章重编为 2.x
+  [/^### 1\.(\d) /, "### 2.$1 "],
 ];
 const applyReplace = (s) => {
   let out = REPLACE_MAP.reduce((acc, [from, to]) => acc.split(from).join(to), String(s));
@@ -189,6 +191,29 @@ function sanitizeLines(lines) {
 }
 // JSON 派生文本（op.description、参数/错误描述、示例）统一走 T()
 const T = (s) => applyReplace(String(s));
+
+// 公共字段说明兜底：JSON 未写 description 的常见字段由命名约定补齐（描述列不留空）
+const COMMON_DESC = {
+  id: "资源 ID（bigint 序列化为 string）", user_id: "用户 ID（bigint 序列化为 string）",
+  session_id: "匿名会话 ID（前端 UUID）", record_id: "问答记录 ID", file_id: "文件 ID",
+  doc_id: "知识文档 ID", dh_id: "数字人形象 ID", spot_id: "景点 ID", route_id: "路线 ID",
+  chunk_id: "分片 ID", report_id: "报告 ID", token: "凭证", access_token: "JWT 访问令牌",
+  token_type: "令牌类型（固定 Bearer）", expires_in: "令牌有效期（秒）",
+  name: "名称", nickname: "昵称", title: "标题", type: "类型", status: "状态",
+  level: "层级", sort: "排序序号（升序）", tags: "标签列表", image_url: "图片资源地址",
+  page: "页码（从 1 起）", size: "每页条数（默认 20）", sort_field: "排序字段",
+  question: "用户问题", answer: "回答文本", content: "内容文本", created_at: "创建时间（UTC ISO8601）",
+  updated_at: "更新时间（UTC ISO8601）", total: "总条数", has_more: "是否还有下一页",
+  list: "当前页数据列表", code: "业务响应码（0 成功）", message: "提示信息",
+  data: "业务数据", trace_id: "全链路追踪 ID（5xxxx 必填）",
+  is_active: "是否发布启用", is_uploaded: "是否已上传完成（秒传标记）",
+  chunk_size: "分片大小（字节）", chunk_total: "分片总数", uploaded_chunks: "已收到分片号列表",
+  md5: "文件内容 MD5（秒传/完整性校验依据）", file_size: "文件大小（字节）",
+  storage_path: "服务器存储相对路径", file_type: "文件类型（白名单后缀）",
+  file_name: "文件名", vector_id: "向量库主键", period: "统计周期粒度",
+  period_start: "周期起始日（后端按粒度推算）", period_end: "周期结束日（后端按粒度推算）",
+  preference: "个性化偏好描述", interest_tags: "兴趣标签列表",
+};
 
 // ---------- OpenAPI 解析 ----------
 const api = JSON.parse(fs.readFileSync(JSON_PATH, "utf-8"));
@@ -268,12 +293,13 @@ function bodyParamRows(op) {
       const props = s.properties || {};
       for (const [k, v0] of Object.entries(props)) {
         const v = deref(v0);
+        const desc = v.description || v.title || COMMON_DESC[k] || "";
         rows.push([
           "body",
           k,
           typeLabel(v0),
           required.includes(k) ? "是" : "否",
-          T(v.description || (v.title || "")),
+          T(desc || "—"),
           v.example !== undefined ? T(JSON.stringify(v.example)) : "",
         ]);
       }
@@ -361,7 +387,7 @@ front.push(new Paragraph({
 }));
 front.push(new Paragraph({
   alignment: AlignmentType.CENTER, spacing: { before: 120 },
-  children: [new TextRun({ text: "版本 v1.0    2026 年 10 月", size: 22, color: "666666" })],
+  children: [new TextRun({ text: "版本 v1.1    2026 年 10 月", size: 22, color: "666666" })],
 }));
 front.push(new Paragraph({ children: [new PageBreak()] }));
 
@@ -398,8 +424,9 @@ children.push(...mdToChildren(sanitizeLines(mdSection(md, "## 五、", "## 六�
 
 // 5 接口明细
 children.push(h1("5  接口明细"));
-children.push(p("每接口给出基本信息、请求参数、返回示例与错误返回四要素；示例值取自接口定义文件。按模块 01~09 组织，共 36 个接口。"));
+children.push(p("每接口给出基本信息、请求参数、返回示例与错误返回四要素；示例值取自接口定义文件。各接口响应体的字段结构、类型与取值约束见附录数据模型（A.1~A.16），两者结合即构成完整的响应参数说明。按模块 01~09 组织，共 36 个接口。"));
 let opSeq = 0;
+let tableNo = 0; // 表号全文档连续分配（不再按每接口固定 4 张预留，消除缺号）
 tagOrder.forEach((tag, ti) => {
   children.push(h2(`5.${ti + 1}  ${tag}`));
   let si = 0;
@@ -407,23 +434,23 @@ tagOrder.forEach((tag, ti) => {
     si++;
     opSeq++;
     children.push(h3(`5.${ti + 1}.${si}  ${o.op.summary}`));
-    // 基本信息
+    // 基本信息（"说明"取汇总速记与详细描述中更详尽者，避免同义反复）
+    const cand = [o.md.desc, o.op.description].filter(Boolean).map((s) => T(s));
+    const detail = cand.sort((a, b) => b.length - a.length)[0] || "—";
     const info = [
       ["接口编号", o.code],
       ["方法与路径", `${o.method} ${o.pPath}`],
       ["模块", o.tag],
       ["鉴权", T(o.md.auth || "—")],
       ["成功状态码", o.md.okCode || "—"],
-      ["说明", T(o.md.desc || o.op.description || "—")],
+      ["说明", detail],
     ];
-    if (o.op.description && o.md.desc && o.op.description !== o.md.desc)
-      info.push(["详细流程", T(o.op.description)]);
-    children.push(tableCaption(`表 5-${opSeq * 4 - 3}  ${o.code} 基本信息`));
+    children.push(tableCaption(`表 5-${++tableNo}  ${o.code} 基本信息`));
     children.push(genTable(["项", "内容"], info, [1700, 7660]));
     // 请求参数
     const rows = bodyParamRows(o.op);
     if (rows.length) {
-      children.push(tableCaption(`表 5-${opSeq * 4 - 2}  ${o.code} 请求参数`));
+      children.push(tableCaption(`表 5-${++tableNo}  ${o.code} 请求参数`));
       children.push(genTable(["位置", "参数名", "类型", "必填", "说明", "示例值"], rows, colWidths(["位置", "参数名", "类型", "必填", "说明", "示例值"], rows), 18));
     } else {
       children.push(p("无请求参数。"));
@@ -431,14 +458,14 @@ tagOrder.forEach((tag, ti) => {
     // 返回示例
     const se = successExample(o.op);
     if (se) {
-      children.push(tableCaption(`表 5-${opSeq * 4 - 1}  ${o.code} 返回示例（HTTP ${se.status}）`));
+      children.push(tableCaption(`表 5-${++tableNo}  ${o.code} 返回示例（HTTP ${se.status}）`));
       codeBlock(T(se.text));
       children.push(new Paragraph({ spacing: { after: 80 }, children: [] }));
     }
     // 错误返回
     const errs = errorRows(o.op);
     if (errs.length) {
-      children.push(tableCaption(`表 5-${opSeq * 4}  ${o.code} 错误返回`));
+      children.push(tableCaption(`表 5-${++tableNo}  ${o.code} 错误返回`));
       children.push(genTable(["HTTP", "场景与错误码"], errs, colWidths(["HTTP", "场景与错误码"], errs)));
     }
   });
@@ -464,11 +491,11 @@ for (const [name, s] of Object.entries(schemas)) {
   const props = s.properties || {};
   const rows = Object.entries(props).map(([k, v0]) => {
     const v = deref(v0);
-    let desc = T(v.description || "");
-    if (v.enum && !String(v0.type || "").startsWith("枚举") && !(v0.items && v0.items.enum)) desc = (desc ? desc + "；" : "") + "枚举：" + v.enum.join(" / ");
-    if (v0.enum && !(v0.items && v0.items.enum)) desc = (desc ? desc + "；" : "") + "枚举：" + v0.enum.join(" / ");
+    let desc = T(v.description || COMMON_DESC[k] || "");
+    // 枚举取值只追加一次（v0 与 deref 后的 v 在 enum 场景是同一对象，避免重复拼接）
+    if (v.enum && !desc.includes("枚举：") && !(v0.items && v0.items.enum)) desc = (desc ? desc + "；" : "") + "枚举：" + v.enum.join(" / ");
     if (v0.items && v0.items.enum) desc = (desc ? desc + "；" : "") + "元素枚举：" + v0.items.enum.join(" / ");
-    return [k, typeLabel(v0), desc, v.example !== undefined ? JSON.stringify(v.example) : (v0.example !== undefined ? JSON.stringify(v0.example) : "—")];
+    return [k, typeLabel(v0), desc || "—", v.example !== undefined ? JSON.stringify(v.example) : (v0.example !== undefined ? JSON.stringify(v0.example) : "—")];
   });
   if ((s.required || []).length) rows.unshift(["必填字段", "—", s.required.join("、"), "—"]);
   children.push(genTable(["字段", "类型", "说明", "示例值"], rows, colWidths(["字段", "类型", "说明", "示例值"], rows), 18));
