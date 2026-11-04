@@ -1,5 +1,16 @@
 <script setup>
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { authState, clearLogin } from './api/auth'
+import { http } from './api/http'
+
+const router = useRouter()
+
+function logout() {
+  http.post('/auth/logout').catch(() => {}).finally(() => {
+    clearLogin()
+    router.push('/login')
+  })
+}
 </script>
 
 <template>
@@ -10,6 +21,12 @@ import { RouterLink, RouterView } from 'vue-router'
         <RouterLink to="/">游客问答</RouterLink>
         <RouterLink to="/admin">管理后台</RouterLink>
         <RouterLink to="/files">文件存储</RouterLink>
+        <RouterLink v-if="authState.admin" to="/perm">权限管理</RouterLink>
+        <span v-if="authState.loggedIn" class="user-area">
+          {{ authState.user.username }}（{{ authState.user.role }}）
+          <a href="#" @click.prevent="logout">退出</a>
+        </span>
+        <RouterLink v-else to="/login">登录 / 注册</RouterLink>
       </nav>
     </header>
     <main class="main">
@@ -39,10 +56,15 @@ import { RouterLink, RouterView } from 'vue-router'
   font-weight: 600;
 }
 
-nav a {
+nav a, nav .user-area {
   color: #cdd9ea;
   margin-left: 16px;
   text-decoration: none;
+}
+
+nav .user-area a {
+  color: #ffd479;
+  margin-left: 8px;
 }
 
 nav a.router-link-active {
