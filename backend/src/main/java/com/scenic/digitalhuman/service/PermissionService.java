@@ -41,6 +41,11 @@ public class PermissionService {
                 new LambdaQueryWrapper<SysPermission>().orderByAsc(SysPermission::getSort));
     }
 
+    /** 全部角色（授权页下拉用） */
+    public List<SysRole> listRoles() {
+        return roleMapper.selectList(new LambdaQueryWrapper<SysRole>().orderByAsc(SysRole::getId));
+    }
+
     /** 新增权限资源 */
     public SysPermission createPermission(SysPermission p) {
         Long exists = permissionMapper.selectCount(
@@ -90,7 +95,8 @@ public class PermissionService {
                 .toList();
     }
 
-    /** 用户赋角色：sys_user_role 与 sys_user.role 快照同事务双写（防快照漂移） */
+    /** 用户赋角色：sys_user_role 与 sys_user.role 快照同事务双写（防快照漂移）。
+     *  防呆：禁止把系统最后一个 ADMIN 降级（否则管理端将无人可用）。 */
     @Transactional(rollbackFor = Exception.class)
     public void assignUserRole(Long userId, Long roleId) {
         SysUser user = userMapper.selectById(userId);
@@ -100,6 +106,14 @@ public class PermissionService {
         SysRole role = roleMapper.selectById(roleId);
         if (role == null) {
             throw new BizException(ErrorCode.NOT_FOUND, "角色不存在");
+        }
+        boolean demoteLastAdmin = "ADMIN".equals(user.getRole()) && !"ADMIN".equals(role.getRoleCode());
+        if (demoteLastAdmin) {
+            Long adminCount = userMapper.selectCount(
+                    new LambdaQueryWrapper<SysUser>().eq(SysUser::getRole, "ADMIN"));
+            if (adminCount <= 1) {
+                throw new BizException(ErrorCode.STATE_CONFLICT, "系统至少保留一个管理员，无法降级最后一个 ADMIN");
+            }
         }
         userRoleMapper.delete(new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getUserId, userId));
         SysUserRole ur = new SysUserRole();
