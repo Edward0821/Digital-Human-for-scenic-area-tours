@@ -46,6 +46,13 @@ public class PermController {
         return Result.success(permissionService.createPermission(p));
     }
 
+    /** 角色列表（授权页下拉用） */
+    @SaCheckPermission("perm:manage")
+    @GetMapping("/roles")
+    public Result<List<com.scenic.digitalhuman.entity.SysRole>> roles() {
+        return Result.success(permissionService.listRoles());
+    }
+
     /** 查角色已有权限 ID 列表 */
     @SaCheckPermission("perm:manage")
     @GetMapping("/roles/{roleId}/permissions")
