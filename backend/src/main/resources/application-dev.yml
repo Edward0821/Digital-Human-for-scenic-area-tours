@@ -19,6 +19,26 @@ app:
     # 文件落盘根目录：分片 tmp 子目录 + yyyyMM 最终目录
     dir: ./uploads
 
+# Sa-Token（第九周鉴权框架）：token 走 Authorization: Bearer 头，会话存 Redis
+# 登出=服务端销毁会话（slide12）；timeout 2h 对应"令牌短时效"
+sa-token:
+  token-name: Authorization
+  token-prefix: Bearer
+  timeout: 7200
+  active-timeout: -1
+  is-concurrent: true
+  token-style: uuid
+  is-log: false
+
+# 邮箱验证码（可选）：配了 spring.mail.* 才真实发信，未配置时验证码降级打进后端日志
+# 示例（QQ 邮箱授权码）：
+# spring.mail.host: smtp.qq.com
+# spring.mail.port: 587
+# spring.mail.username: xxx@qq.com
+# spring.mail.password: <授权码放 application-local.yml>
+# spring.mail.properties.mail.smtp.auth: true
+# spring.mail.properties.mail.smtp.starttls.enable: true
+
 # 大文件分片上传需要放大请求体限制（默认 1MB 会拦掉分片）
 spring.servlet.multipart:
   max-file-size: 10MB

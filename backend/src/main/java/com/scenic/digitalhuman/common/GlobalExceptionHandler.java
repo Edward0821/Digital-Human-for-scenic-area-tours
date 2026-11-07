@@ -26,6 +26,22 @@ public class GlobalExceptionHandler {
         return Result.fail(e.getCode(), e.getMessage(), e.getData());
     }
 
+    // Sa-Token 异常映射（全项目口径统一为 HTTP 200 + 业务码，前端拦截器按 code 处理）
+    @ExceptionHandler(cn.dev33.satoken.exception.NotLoginException.class)
+    public Result<Object> handleNotLogin(cn.dev33.satoken.exception.NotLoginException e) {
+        return Result.fail(ErrorCode.UNAUTHORIZED, "未登录或登录已过期，请重新登录");
+    }
+
+    @ExceptionHandler(cn.dev33.satoken.exception.NotPermissionException.class)
+    public Result<Object> handleNotPermission(cn.dev33.satoken.exception.NotPermissionException e) {
+        return Result.fail(ErrorCode.ROLE_DENIED, "无权限执行该操作");
+    }
+
+    @ExceptionHandler(cn.dev33.satoken.exception.NotRoleException.class)
+    public Result<Object> handleNotRole(cn.dev33.satoken.exception.NotRoleException e) {
+        return Result.fail(ErrorCode.ROLE_DENIED, "角色权限不足");
+    }
+
     @ExceptionHandler(Exception.class)
     public Result<Void> handleException(Exception e) {
         log.error("未捕获异常", e);

@@ -2,6 +2,7 @@ package com.scenic.digitalhuman.controller;
 
 import com.scenic.digitalhuman.common.ErrorCode;
 import com.scenic.digitalhuman.common.Result;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.scenic.digitalhuman.service.FileStorageService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.NotBlank;
@@ -42,6 +43,7 @@ public class FileController {
     private final FileStorageService fileStorageService;
 
     /** 上传初始化：秒传检查 / 断点续传接续 / 新建分片任务 */
+    @SaCheckPermission("file:manage")
     @PostMapping("/init")
     public Result<FileStorageService.InitResult> init(@Validated @RequestBody FileInitRequest req) {
         return Result.success(fileStorageService.init(
@@ -68,6 +70,7 @@ public class FileController {
     }
 
     /** 通知后台重组：缺片返回缺失清单；全齐则顺序合并 + 整体 md5 终校 */
+    @SaCheckPermission("file:manage")
     @PostMapping("/{id}/complete")
     public Result<String> complete(@PathVariable long id) {
         return Result.success(fileStorageService.complete(id));
