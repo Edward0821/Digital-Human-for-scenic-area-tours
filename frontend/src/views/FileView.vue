@@ -10,26 +10,10 @@
 import { computed, reactive, ref } from 'vue'
 import axios from 'axios'
 import SparkMD5 from 'spark-md5'
+import { http } from '../api/http' // 全局实例：自动带登录态 + 业务码拦截（FILE 接口现在需要 ADMIN 令牌）
+import { getToken } from '../api/auth'
 
-const BASE = '/api/v1/files'
-
-// 后端统一口径是 "HTTP 200 + 业务码 code（0 成功）"，axios 默认只认 HTTP 状态码，
-// 会导致 catch 里的"坏块通知重传"逻辑永远不触发。这里建独立实例加拦截器：
-// code !== 0 一律转 reject，且保持 err.response.data 结构与 HTTP 错误一致。
-const http = axios.create()
-http.interceptors.response.use(
-  (res) => {
-    const biz = res.data
-    if (biz && typeof biz === 'object' && typeof biz.code === 'number' && biz.code !== 0) {
-      const e = new Error(biz.message || '业务处理失败')
-      e.response = res
-      e.code = `BIZ_${biz.code}`
-      return Promise.reject(e)
-    }
-    return res
-  },
-  (err) => Promise.reject(err),
-)
+const BASE = 'files' // 相对全局 baseURL（/api/v1）
 
 // ================= 公共：日志 + 已上传文件列表 =================
 const logs = ref([])
@@ -342,7 +326,10 @@ async function doDownload() {
   const t = dlTask
   const headers = t.received > 0 ? { Range: `bytes=${t.received}-` } : {}
   if (t.received > 0) log('下载', `▶ 携带 Range: bytes=${t.received}- 继续请求 id=${t.target.id}`)
-  const resp = await fetch(`${BASE}/${t.target.id}/download`, { headers })
+  // fetch 不经 axios 实例：显式写 /api/v1 前缀 + 手动携带登录态（Vite 代理 /api → 8080）
+  const resp = await fetch(`/api/v1/files/${t.target.id}/download`, {
+    headers: { ...headers, Authorization: `Bearer ${getToken()}` },
+  })
   if (t.received > 0) {
     log('下载', `✓ 响应 ${resp.status}（206 Partial Content），从断点 ${t.received} 字节处继续`)
   }

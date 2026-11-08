@@ -15,11 +15,12 @@ INSERT IGNORE INTO sys_role (id, role_code, role_name, description) VALUES
     (1, 'ADMIN',   '管理员', '拥有管理后台全部功能权限'),
     (2, 'VISITOR', '游客',   '游客端功能权限（问答/识景/推荐）');
 
--- admin 初始密码为 password（下方哈希的明文），仅演示用。
+-- admin 初始密码为 Admin#123456（下方哈希的明文），仅演示用。
+-- （v1.1 修正：原示例哈希明文注释误写为 password，已按 BCrypt 实测重生成）
 -- 正式演示前请用项目内 BCryptPasswordEncoder 生成新哈希替换：
 --   new BCryptPasswordEncoder().encode("你定的密码")
 INSERT IGNORE INTO sys_user (id, username, password, role) VALUES
-    (1, 'admin', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'ADMIN');
+    (1, 'admin', '$2a$10$hRpj3O.vY3JE76sEIO46..VyuQkKF1jvrm9iGYVlahorV2hmuJPae', 'ADMIN');
 
 INSERT IGNORE INTO sys_user_role (user_id, role_id) VALUES
     (1, 1);

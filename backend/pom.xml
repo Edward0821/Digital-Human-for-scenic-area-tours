@@ -20,6 +20,7 @@
     <properties>
         <java.version>21</java.version>
         <mybatis-plus.version>3.5.12</mybatis-plus.version>
+        <sa-token.version>1.39.0</sa-token.version>
     </properties>
 
     <dependencies>
@@ -34,6 +35,32 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- Sa-Token 鉴权框架（第九周要求：鉴权必须用框架；登录/权限/注解鉴权一体） -->
+        <dependency>
+            <groupId>cn.dev33</groupId>
+            <artifactId>sa-token-spring-boot3-starter</artifactId>
+            <version>${sa-token.version}</version>
+        </dependency>
+        <!-- Sa-Token 会话存 Redis（登出即失效/踢人下线/多实例共享） -->
+        <dependency>
+            <groupId>cn.dev33</groupId>
+            <artifactId>sa-token-redis-jackson</artifactId>
+            <version>${sa-token.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+        </dependency>
+        <!-- BCrypt 慢哈希（slide8：随机盐+慢哈希，仅取 crypto 工具不引入 Security 过滤器链） -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+        <!-- 邮箱验证码发送（忘记密码/邮箱登录；SMTP 配置缺失时降级为日志输出） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
         <dependency>
             <groupId>com.baomidou</groupId>
