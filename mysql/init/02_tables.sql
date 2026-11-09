@@ -22,9 +22,11 @@ CREATE TABLE sys_user (
     username    VARCHAR(50)  NOT NULL COMMENT '登录用户名（3~50 字符）',
     password    VARCHAR(100) NOT NULL COMMENT '登录密码（BCrypt 哈希，禁明文）',
     role        VARCHAR(20)  NOT NULL DEFAULT 'VISITOR' COMMENT '角色冗余快照（免 join 判权；变更时与 sys_user_role 同事务双写）',
+    email       VARCHAR(100) NULL COMMENT '邮箱（验证码登录/找回密码）',
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '注册时间',
     PRIMARY KEY (id),
-    UNIQUE KEY uk_username (username)
+    UNIQUE KEY uk_username (username),
+    UNIQUE KEY uk_email (email)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci TABLESPACE ts_scenic COMMENT = '用户表';
 
 -- 角色表
