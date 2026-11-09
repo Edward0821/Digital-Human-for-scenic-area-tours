@@ -32,7 +32,7 @@ public class SaTokenConfig implements WebMvcConfigurer {
     /** 公开/可选登录路径（匿名可访问，业务侧按需取登录态） */
     private static final List<String> PUBLIC_PREFIXES = List.of(
             "/api/v1/auth",             // 注册/登录/验证码/刷新/重置 全匿名
-            "/api/health",
+            "/api/v1/health",
             "/api/v1/scenic-spots",
             "/api/v1/routes",
             "/api/v1/qa",
@@ -52,18 +52,24 @@ public class SaTokenConfig implements WebMvcConfigurer {
                 .excludePathPatterns("/error");
     }
 
+    /** 前缀段匹配：path 等于 prefix，或以 prefix + "/" 开头。
+     *  不用裸 startsWith：避免 "/api/v1/qa" 顺带放行 "/api/v1/qaxxx" 这类理论越权。 */
+    private boolean seg(String path, String prefix) {
+        return path.equals(prefix) || path.startsWith(prefix + "/");
+    }
+
     private boolean isProtected(String path) {
         // files 模块：FILE-1/3/4（init/complete/{id}）ADMIN 保护；FILE-5（simple 直传）游客可选
-        if (path.startsWith("/api/v1/files/")) {
-            return !path.startsWith("/api/v1/files/simple");
+        if (seg(path, "/api/v1/files")) {
+            return !seg(path, "/api/v1/files/simple");
         }
         for (String pub : PUBLIC_PREFIXES) {
-            if (path.startsWith(pub)) {
+            if (seg(path, pub)) {
                 return false;
             }
         }
         for (String p : PROTECTED_PREFIXES) {
-            if (path.startsWith(p)) {
+            if (seg(path, p)) {
                 return true;
             }
         }

@@ -44,6 +44,8 @@ import java.util.UUID;
 public class AuthService {
 
     private static final String REFRESH_PREFIX = "scenic:auth:refresh:";
+    /** 反查索引：userId -> 当前 refresh token（logout 吊销用） */
+    private static final String REFRESH_USER_PREFIX = "scenic:auth:refresh:user:";
     private static final String EMAIL_CODE_PREFIX = "scenic:emailcode:";
     private static final String RATE_LIMIT_PREFIX = "scenic:ratelimit:auth:";
     private static final Duration REFRESH_TTL = Duration.ofDays(7);
@@ -158,7 +160,12 @@ public class AuthService {
     public void logout() {
         Object loginId = StpUtil.getLoginIdDefaultNull();
         if (loginId != null) {
-            redis.delete(REFRESH_PREFIX + loginId);
+            // 按反查索引找到该用户的 refresh token，正反两个 key 一并吊销
+            String oldToken = redis.opsForValue().get(REFRESH_USER_PREFIX + loginId);
+            if (oldToken != null) {
+                redis.delete(REFRESH_PREFIX + oldToken);
+            }
+            redis.delete(REFRESH_USER_PREFIX + loginId);
         }
         StpUtil.logout();
     }
@@ -176,10 +183,17 @@ public class AuthService {
         redis.delete(key); // 旋转：旧 refresh 作废，发新的
         StpUtil.login(Long.valueOf(loginId));
         String newRefresh = issueRefreshToken(Long.valueOf(loginId));
+        // 补齐用户信息：与登录同构（契约 LoginData），前端续期后无需二次 /me 即可完整覆写登录态
+        SysUser user = sysUserMapper.selectById(Long.valueOf(loginId));
         Map<String, Object> data = new HashMap<>();
         data.put("tokenName", StpUtil.getTokenName());
         data.put("tokenValue", StpUtil.getTokenValue());
         data.put("refreshToken", newRefresh);
+        if (user != null) {
+            data.put("userId", user.getId());
+            data.put("username", user.getUsername());
+            data.put("role", user.getRole());
+        }
         return data;
     }
 
@@ -259,7 +273,9 @@ public class AuthService {
     private String issueRefreshToken(long userId) {
         String token = UUID.randomUUID().toString().replace("-", "")
                 + UUID.randomUUID().toString().replace("-", "");
-        redis.opsForValue().set(REFRESH_PREFIX + userId, token, REFRESH_TTL);
+        // 双 key：正查（refresh 接口按 token 换 userId）+ 反查（logout 按 userId 吊销 token）
+        redis.opsForValue().set(REFRESH_PREFIX + token, String.valueOf(userId), REFRESH_TTL);
+        redis.opsForValue().set(REFRESH_USER_PREFIX + userId, token, REFRESH_TTL);
         return token;
     }
 

@@ -24,7 +24,7 @@ app:
 sa-token:
   token-name: Authorization
   token-prefix: Bearer
-  timeout: 7200
+  timeout: 7200 # 2h 短时效；过期后前端用 refresh token（7d）静默续期
   active-timeout: -1
   is-concurrent: true
   token-style: uuid
