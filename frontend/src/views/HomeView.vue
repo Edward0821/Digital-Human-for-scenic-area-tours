@@ -35,7 +35,7 @@ function send() {
     </div>
 
     <div class="health-card">
-      <h3>后端服务状态（/api/health）</h3>
+      <h3>后端服务状态（/api/v1/health）</h3>
       <template v-if="health">
         <p>应用：{{ health.app }} — {{ health.status }}</p>
         <p v-if="health.components">

@@ -33,12 +33,13 @@ import java.util.UUID;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -335,10 +336,16 @@ class FileControllerTest {
         mvc.perform(auth(post("/api/v1/files/" + id + "/complete")))
                 .andExpect(jsonPath("$.code").value(0));
 
-        mvc.perform(auth(get("/api/v1/files/" + id + "/download")).header("Range", "bytes=5-14"))
+        // StreamingResponseBody 是异步返回：第一段断言头，第二段 asyncDispatch 等异步线程写完 body 再断言内容
+        MvcResult mr = mvc.perform(auth(get("/api/v1/files/" + id + "/download")).header("Range", "bytes=5-14"))
+                .andExpect(request().asyncStarted())
                 .andExpect(status().isPartialContent())
                 .andExpect(header().string("Content-Range", "bytes 5-14/30"))
                 .andExpect(header().longValue("Content-Length", 10))
+                .andReturn();
+
+        mvc.perform(asyncDispatch(mr))
+                .andExpect(status().isPartialContent())
                 .andExpect(MockMvcResultMatchers.content().string(payload.substring(5, 15)));
     }
 }

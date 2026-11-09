@@ -27,11 +27,15 @@ function refreshState() {
 export function saveLogin(data) {
   localStorage.setItem(KEY_TOKEN, data.tokenValue)
   localStorage.setItem(KEY_REFRESH, data.refreshToken || '')
-  localStorage.setItem(KEY_USER, JSON.stringify({
-    userId: data.userId,
-    username: data.username,
-    role: data.role,
-  }))
+  // 登录返回带用户信息；续期（/auth/refresh）只返回令牌对——不覆写已存用户，
+  // 否则 dh_user 会被写成 {userId:undefined,...}，导航 undefined 且 ADMIN 入口消失
+  if (data.userId != null) {
+    localStorage.setItem(KEY_USER, JSON.stringify({
+      userId: data.userId,
+      username: data.username,
+      role: data.role,
+    }))
+  }
   refreshState()
 }
 
