@@ -27,6 +27,8 @@ sa-token:
   timeout: 7200 # 2h 短时效；过期后前端用 refresh token（7d）静默续期
   active-timeout: -1
   is-concurrent: true
+  # is-share=false：每次 login/续期都发新 token（真轮换，不是共用同一把钥匙续命）
+  is-share: false
   token-style: uuid
   is-log: false
 

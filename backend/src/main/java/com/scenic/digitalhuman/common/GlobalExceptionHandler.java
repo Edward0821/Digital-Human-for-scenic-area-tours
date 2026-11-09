@@ -5,6 +5,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 全局异常处理：所有异常统一转成 Result 返回，堆栈只进日志不进响应（安全自检第 10 条）。
@@ -40,6 +41,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(cn.dev33.satoken.exception.NotRoleException.class)
     public Result<Object> handleNotRole(cn.dev33.satoken.exception.NotRoleException e) {
         return Result.fail(ErrorCode.ROLE_DENIED, "角色权限不足");
+    }
+
+    // Spring 6.1+ 对未匹配路径抛 NoResourceFoundException，不单独处理会被下方
+    // Exception 兜底成 50000"系统内部错误"——前端调错路径时无从排查
+    @ExceptionHandler(NoResourceFoundException.class)
+    public Result<Void> handleNoResource(NoResourceFoundException e) {
+        return Result.fail(ErrorCode.NOT_FOUND, "请求的接口不存在，请检查路径拼写");
     }
 
     @ExceptionHandler(Exception.class)
