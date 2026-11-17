@@ -130,6 +130,8 @@ CREATE TABLE route (
 CREATE TABLE qa_record (
     id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '问答记录标识',
     session_id          VARCHAR(36)  NOT NULL COMMENT '会话标识（前端 UUID）',
+    seq                 BIGINT       NULL COMMENT '会话内消息序号（服务端 Redis INCR 发号，实时聊天通道用；HTTP 批量问答为 NULL）',
+    client_id           VARCHAR(64)  NULL COMMENT '客户端消息幂等锚点（设备号+本地序号，重发去重，PPT P10）',
     user_id             BIGINT       NULL COMMENT '提问用户标识（匿名 NULL，逻辑外键 -> sys_user.id）',
     question            TEXT         NOT NULL COMMENT '游客问题文本（或图片描述）',
     answer              TEXT         NOT NULL COMMENT '系统回答文本',
@@ -142,6 +144,8 @@ CREATE TABLE qa_record (
     sentiment_score     DOUBLE       NULL COMMENT '情感得分（-1.0~1.0，NULL 未分析）',
     created_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '提问时间',
     PRIMARY KEY (id),
+    UNIQUE KEY uk_client_id (client_id),
+    KEY idx_session_seq (session_id, seq),
     KEY idx_session_created (session_id, created_at),
     KEY idx_created_at (created_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci TABLESPACE ts_scenic COMMENT = '问答记录表';
