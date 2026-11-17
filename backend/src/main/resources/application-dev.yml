@@ -18,6 +18,17 @@ app:
   upload:
     # 文件落盘根目录：分片 tmp 子目录 + yyyyMM 最终目录
     dir: ./uploads
+  kafka:
+    # false 时关闭 producer/consumer，QA 记录直接同步落库（JUnit 测试与无 Kafka 环境的降级开关）
+    enabled: true
+  qa:
+    # 热点问答缓存（第十周作业题2）：同一问题访问计数超过阈值即判定热点
+    hot-count-threshold: 2
+    hot-base-ttl-minutes: 5        # 普通缓存 TTL（第一次问就缓存，复问即秒回）
+    hot-extended-ttl-minutes: 30   # 热点延长 TTL（分享组口径：热点数据在缓存里留存更久）
+    hot-ttl-jitter-minutes: 5      # TTL 随机偏移（防大量 key 同时过期 → 缓存雪崩）
+    # 演示削峰用：consumer 每条消息处理延时（模拟推理/落库节奏，看队列积压与消化过程；生产置 0）
+    consume-delay-ms: 300
 
 # Sa-Token（第九周鉴权框架）：token 走 Authorization: Bearer 头，会话存 Redis
 # 登出=服务端销毁会话（slide12）；timeout 2h 对应"令牌短时效"
@@ -45,3 +56,24 @@ sa-token:
 spring.servlet.multipart:
   max-file-size: 10MB
   max-request-size: 12MB
+
+# Kafka（第十周作业题3）：QA 问答记录异步落库削峰；本地容器 deploy/docker-compose.kafka.yml（KRaft 单机）
+spring.kafka:
+  bootstrap-servers: localhost:9092
+  producer:
+    key-serializer: org.apache.kafka.common.serialization.StringSerializer
+    value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    # 可靠性三件套（分享组口径）：全副本确认 + 失败重试 + 幂等生产者（防重试导致的重复消息）
+    acks: all
+    retries: 3
+    properties:
+      enable.idempotence: true
+  consumer:
+    group-id: scenic-qa-record-writer
+    auto-offset-reset: earliest
+    # 手动提交 offset：业务处理成功才提交，进程崩溃重启后从上次进度续传（不丢消息）
+    enable-auto-commit: false
+    key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+  listener:
+    ack-mode: manual

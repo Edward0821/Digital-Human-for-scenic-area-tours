@@ -1,0 +1,38 @@
+name: digital-human-kafka
+
+# Kafka 单机演示环境（KRaft 模式，免 ZooKeeper），官方 apache/kafka 镜像经 DaoCloud 镜像源拉取。
+# 注：bitnami/kafka 在国内各镜像源被拒/限流，apache/kafka 官方镜像可正常拉取。
+# 仅供第十周"高并发三件套"作业与本地开发使用，与 docker-compose.yml（部署栈）互不影响。
+# 启动：docker compose -f docker-compose.kafka.yml up -d
+# 验证：docker exec scenic-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+
+services:
+  scenic-kafka:
+    image: docker.m.daocloud.io/apache/kafka:3.7.0
+    container_name: scenic-kafka
+    ports:
+      # 仅绑定回环地址，本机 Spring Boot 通过 localhost:9092 连接
+      - "127.0.0.1:9092:9092"
+    environment:
+      # KRaft 单节点：本进程同时是 broker + controller
+      - KAFKA_NODE_ID=1
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      # 对外通告 localhost:9092（宿主机 Spring Boot / 控制台脚本都用它）
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      # 单节点副本因子必须全为 1，否则内部 topic 建不起来
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      - KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0
+      # 数据目录挂卷持久化：offset 断点续传演示（杀进程重启补数据）依赖它
+      - KAFKA_LOG_DIRS=/var/lib/kafka/data
+    volumes:
+      - scenic-kafka-data:/var/lib/kafka/data
+
+volumes:
+  scenic-kafka-data:
