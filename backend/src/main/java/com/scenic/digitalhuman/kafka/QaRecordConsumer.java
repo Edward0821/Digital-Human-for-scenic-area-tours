@@ -2,6 +2,7 @@ package com.scenic.digitalhuman.kafka;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.scenic.digitalhuman.chat.ChatSessionRegistry;
 import com.scenic.digitalhuman.entity.QaRecord;
 import com.scenic.digitalhuman.mapper.QaRecordMapper;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,7 @@ import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.Map;
 
 /**
  * QA 问答记录消费者（第十周作业题3：异步落库 + 手动提交 offset + 业务幂等）。
@@ -42,6 +44,7 @@ public class QaRecordConsumer {
     private final ObjectMapper objectMapper;
     private final QaRecordMapper qaRecordMapper;
     private final StringRedisTemplate redis;
+    private final ChatSessionRegistry chatSessionRegistry;
 
     /** 每条消息处理延时（模拟推理/落库节奏，演示队列积压与消化；生产置 0） */
     @Value("${app.qa.consume-delay-ms:0}")
@@ -78,6 +81,9 @@ public class QaRecordConsumer {
 
             QaRecord record = new QaRecord();
             record.setSessionId(node.path("sessionId").asText());
+            // 第十一周实时聊天：seq/clientId 由 WS 通道产生，HTTP 批量问答消息无此键（null-safe）
+            record.setSeq(node.hasNonNull("seq") ? node.get("seq").asLong() : null);
+            record.setClientId(node.hasNonNull("clientId") ? node.get("clientId").asText() : null);
             record.setUserId(node.hasNonNull("userId") ? node.get("userId").asLong() : null);
             record.setQuestion(node.path("question").asText());
             record.setAnswer(node.path("answer").asText());
@@ -87,9 +93,37 @@ public class QaRecordConsumer {
             record.setRecognizedSpotId(node.hasNonNull("recognizedSpotId") ? node.get("recognizedSpotId").asLong() : null);
             record.setLatencyMs(node.path("latencyMs").asInt(0));
             // created_at 不设值：由数据库 DEFAULT CURRENT_TIMESTAMP 生成落库时间
-            qaRecordMapper.insert(record);
-            log.debug("[QA落库] id={} sessionId={} question={}",
-                    record.getId(), record.getSessionId(), record.getQuestion());
+            try {
+                qaRecordMapper.insert(record);
+            } catch (org.springframework.dao.DuplicateKeyException e) {
+                // 第十一周（PPT P10）：客户端断线重发同一条 chat，clientId 相同 → 撞
+                // uk_client_id 唯一键 = 重复消息。语义：这轮问答已落过库，跳过即幂等成功，
+                // 正常提交 offset，不释放幂等键、不重投（第二层防线：Redis messageId 键之上，
+                // 数据库唯一键是最终兜底——两层任一命中都不会重复落库）
+                log.info("[QA落库] 重复消息跳过（uk_client_id 命中）：clientId={}", record.getClientId());
+                ack.acknowledge();
+                return;
+            }
+            log.debug("[QA落库] id={} sessionId={} seq={} clientId={} question={}",
+                    record.getId(), record.getSessionId(), record.getSeq(),
+                    record.getClientId(), record.getQuestion());
+
+            // 第十一周：落库成功后推 answer 帧（契约：{type:"answer",seq,question,answer,latencyMs}）。
+            // 只推 WS 通道来的消息（seq != null；HTTP 旧链路消息无 seq，且本就没有 WS 会话）。
+            // 推送失败仅记日志、不重试、不影响 offset 提交——sync 补拉兜底（PPT P12 推是加速拉是兜底）。
+            if (record.getSeq() != null) {
+                String answerFrame = objectMapper.writeValueAsString(Map.of(
+                        "type", "answer",
+                        "seq", record.getSeq(),
+                        "question", record.getQuestion(),
+                        "answer", record.getAnswer(),
+                        "latencyMs", record.getLatencyMs()));
+                boolean pushed = chatSessionRegistry.push(record.getSessionId(), answerFrame);
+                if (!pushed) {
+                    log.info("[QA落库] answer 推送未达（会话不在线/发送失败，sync 兜底）：sessionId={} seq={}",
+                            record.getSessionId(), record.getSeq());
+                }
+            }
 
             // 处理成功才提交 offset（崩溃在 insert 后、ack 前：幂等键已占，重投会被跳过，不重复）
             ack.acknowledge();

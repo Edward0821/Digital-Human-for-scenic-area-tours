@@ -24,6 +24,12 @@ public class QaRecord {
     /** 会话标识（前端 UUID，匿名交互关联键） */
     private String sessionId;
 
+    /** 会话内消息序号（服务端 Redis INCR 发号，实时聊天通道用；HTTP 批量问答为 NULL） */
+    private Long seq;
+
+    /** 客户端消息幂等锚点（设备号+本地序号，重发去重；uk_client_id 唯一键兜底） */
+    private String clientId;
+
     /** 提问用户标识（匿名 NULL，逻辑外键 -> sys_user.id） */
     private Long userId;
 
