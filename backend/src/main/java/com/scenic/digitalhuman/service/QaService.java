@@ -1,5 +1,6 @@
 package com.scenic.digitalhuman.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.scenic.digitalhuman.entity.QaRecord;
 import com.scenic.digitalhuman.kafka.QaRecordProducer;
 import com.scenic.digitalhuman.mapper.QaRecordMapper;
@@ -12,7 +13,9 @@ import org.springframework.util.DigestUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -61,7 +64,60 @@ public class QaService {
     public Map<String, Object> answer(String sessionId, Long userId, String question,
                                       String interactionType, String imageUrl) {
         long start = System.currentTimeMillis();
+        CacheOutcome outcome = resolveAnswer(question);
+        int latencyMs = (int) (System.currentTimeMillis() - start);
 
+        // 记录异步落库（题3）：Kafka 发送，失败自动降级同步写库（见 QaRecordProducer）
+        QaRecord record = new QaRecord();
+        record.setSessionId(sessionId);
+        record.setUserId(userId);
+        record.setQuestion(question);
+        record.setAnswer(outcome.answer());
+        record.setInteractionType(interactionType);
+        record.setAnswerType("TEXT"); // 打样阶段统一文本回答；TTS 接入后变 TEXT_VOICE
+        record.setImageUrl(imageUrl);
+        record.setLatencyMs(latencyMs);
+        qaRecordProducer.send(record);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("answer", outcome.answer());
+        data.put("answerType", "TEXT");
+        data.put("latencyMs", latencyMs);
+        data.put("cached", outcome.hit());
+        return data;
+    }
+
+    /**
+     * 实时聊天通道答案入口（第十一周任务A，文档"复用 QaService 的答案生成"落地）：
+     * 复用热点缓存 + Kafka 落库整条链路，仅额外携带 seq（WS 服务端 Redis INCR 发号）
+     * 与 clientId（客户端幂等锚点）。本方法只负责"出答案 + 入队"，
+     * answer 帧由 consumer 落库成功后经 ChatSessionRegistry 推送——推是加速，/qa/sync 兜底。
+     */
+    public QaRecord answerViaChat(String sessionId, Long userId, String question,
+                                  String clientId, long seq) {
+        long start = System.currentTimeMillis();
+        CacheOutcome outcome = resolveAnswer(question);
+        int latencyMs = (int) (System.currentTimeMillis() - start);
+
+        QaRecord record = new QaRecord();
+        record.setSessionId(sessionId);
+        record.setSeq(seq);
+        record.setClientId(clientId);
+        record.setUserId(userId);
+        record.setQuestion(question);
+        record.setAnswer(outcome.answer());
+        record.setInteractionType("TEXT");
+        record.setAnswerType("TEXT"); // 打样阶段统一文本回答；TTS 接入后变 TEXT_VOICE
+        record.setLatencyMs(latencyMs);
+        qaRecordProducer.send(record);
+        return record;
+    }
+
+    /**
+     * 热点缓存解析（answer 与聊天通道共用）：问题指纹 INCR 计数 → 查缓存，
+     * 未命中生成答案并写入缓存（热点延长 TTL，均带随机偏移防雪崩）。
+     */
+    private CacheOutcome resolveAnswer(String question) {
         String fingerprint = DigestUtils.md5DigestAsHex(
                 question.trim().toLowerCase().getBytes(StandardCharsets.UTF_8));
         String hotKey = HOT_PREFIX + fingerprint;
@@ -73,39 +129,20 @@ public class QaService {
 
         // 缓存命中：热点问题顺带延长 TTL（分享组口径：热点数据留存更久）
         String cached = redis.opsForValue().get(hotKey);
-        boolean cacheHit = cached != null;
-        String answer;
-        if (cacheHit) {
-            answer = cached;
+        if (cached != null) {
             if (count >= hotCountThreshold) {
-                redis.opsForValue().set(hotKey, answer, extendedTtl());
+                redis.opsForValue().set(hotKey, cached, extendedTtl());
             }
-        } else {
-            answer = generateAnswer(question);
-            redis.opsForValue().set(hotKey, answer,
-                    count >= hotCountThreshold ? extendedTtl() : baseTtl());
+            return new CacheOutcome(cached, true);
         }
+        String answer = generateAnswer(question);
+        redis.opsForValue().set(hotKey, answer,
+                count >= hotCountThreshold ? extendedTtl() : baseTtl());
+        return new CacheOutcome(answer, false);
+    }
 
-        int latencyMs = (int) (System.currentTimeMillis() - start);
-
-        // 记录异步落库（题3）：Kafka 发送，失败自动降级同步写库（见 QaRecordProducer）
-        QaRecord record = new QaRecord();
-        record.setSessionId(sessionId);
-        record.setUserId(userId);
-        record.setQuestion(question);
-        record.setAnswer(answer);
-        record.setInteractionType(interactionType);
-        record.setAnswerType("TEXT"); // 打样阶段统一文本回答；TTS 接入后变 TEXT_VOICE
-        record.setImageUrl(imageUrl);
-        record.setLatencyMs(latencyMs);
-        qaRecordProducer.send(record);
-
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("answer", answer);
-        data.put("answerType", "TEXT");
-        data.put("latencyMs", latencyMs);
-        data.put("cached", cacheHit);
-        return data;
+    /** 缓存解析结果：answer + 是否命中（hit 供 HTTP 响应 cached 字段） */
+    private record CacheOutcome(String answer, boolean hit) {
     }
 
     /**
@@ -141,5 +178,38 @@ public class QaService {
     private Duration extendedTtl() {
         long minutes = hotExtendedTtlMinutes + ThreadLocalRandom.current().nextLong(hotTtlJitterMinutes + 1);
         return Duration.ofMinutes(minutes);
+    }
+
+    /**
+     * 断线补拉（第十一周，PPT P12"推是加速，拉是兜底"）：
+     * 按 seq 游标补齐某会话在 lastSeq 之后的消息（升序，LIMIT 500）。
+     * 调用时机：WS 连接建立后 + 前端发现 seq 空洞时（answer 推送丢失的对账通道）。
+     * WHERE seq > ? 天然排除 seq 为 NULL 的旧 HTTP 问答行（NULL 比较恒为假）。
+     */
+    public Map<String, Object> sync(String sessionId, long afterSeq) {
+        List<QaRecord> rows = qaRecordMapper.selectList(new LambdaQueryWrapper<QaRecord>()
+                .eq(QaRecord::getSessionId, sessionId)
+                .gt(QaRecord::getSeq, afterSeq)
+                .orderByAsc(QaRecord::getSeq)
+                .last("LIMIT 500"));
+
+        List<Map<String, Object>> messages = new ArrayList<>();
+        long lastSeq = afterSeq;
+        for (QaRecord r : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("seq", r.getSeq());
+            m.put("question", r.getQuestion());
+            m.put("answer", r.getAnswer());
+            m.put("latencyMs", r.getLatencyMs());
+            messages.add(m);
+            if (r.getSeq() != null && r.getSeq() > lastSeq) {
+                lastSeq = r.getSeq();
+            }
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("messages", messages);
+        result.put("lastSeq", lastSeq);
+        return result;
     }
 }

@@ -8,9 +8,11 @@ import com.scenic.digitalhuman.service.QaService;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
@@ -61,6 +63,26 @@ public class QaController {
 
         return Result.success(qaService.answer(req.sessionId(), userId, req.question(),
                 interactionType, "IMAGE".equals(interactionType) ? req.imageUrl() : null));
+    }
+
+    /**
+     * 断线补拉（QA-sync，第十一周）：WS 推送丢失/断线重连后，按 seq 游标对账补齐。
+     * 契约：GET /api/v1/qa/sync?sessionId=<uuid>&afterSeq=<n>
+     * 响应 data：{ messages: [{seq,question,answer,latencyMs}], lastSeq }，按 seq 升序，LIMIT 500。
+     * 公开接口（游客可用，口径同 /qa 提问）。
+     */
+    @GetMapping("/sync")
+    public Result<Map<String, Object>> sync(
+            @RequestParam(required = false) String sessionId,
+            @RequestParam(defaultValue = "0") long afterSeq) {
+        // 不用 @NotBlank：参数缺失时业务码精确到 BAD_PAYLOAD，而非兜底 50000（同 ask() 口径）
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new BizException(ErrorCode.BAD_PAYLOAD, "sessionId 不能为空");
+        }
+        if (afterSeq < 0) {
+            throw new BizException(ErrorCode.BAD_FORMAT, "afterSeq 不能为负数");
+        }
+        return Result.success(qaService.sync(sessionId, afterSeq));
     }
 
     public record QaReq(
