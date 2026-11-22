@@ -7,7 +7,7 @@
  * 4 上传进度条（已完成分片字节 + 当前分片 ofnUploadProgress 加权）/ 下载进度条（reader 累计 / Content-Length）→ 两条进度条
  * 5 高并发下载 → 讲解口径：接口无锁无状态 + Range 分段多线程拉取 + 生产 Nginx sendfile
  */
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import SparkMD5 from 'spark-md5'
 import { http } from '../api/http' // 全局实例：自动带登录态 + 业务码拦截（FILE 接口现在需要 ADMIN 令牌）
@@ -287,6 +287,28 @@ function pickSmallFiles(e) {
   log('小文件', `已选择 ${smallFiles.value.length} 个文件，将并发调用 /files/simple`)
 }
 
+// ================= 卡片二·图片压缩（第十一周提速·③：canvas 压缩后再传） =================
+/** 超过 1MB 的图片先压缩再传（quality 0.7 + 长边压到 1600px——按展示分辨率压，原图保留） */
+const COMPRESS_OVER_BYTES = 1024 * 1024
+const COMPRESS_QUALITY = 0.7
+
+function isImage(f) {
+  return f && f.type && f.type.startsWith('image/')
+}
+
+async function compressImage(file) {
+  const bitmap = await createImageBitmap(file)
+  const maxSide = 1600
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close?.()
+  return new Promise((resolve, reject) => canvas.toBlob(
+    (b) => (b ? resolve(b) : reject(new Error('canvas 压缩失败'))), 'image/jpeg', COMPRESS_QUALITY))
+}
+
 /** 批量 = 前端多选后并发循环调用单个接口（问题 2） */
 async function uploadSmall() {
   if (!smallFiles.value.length || smallUploading.value) return
@@ -294,13 +316,24 @@ async function uploadSmall() {
   await Promise.all(smallFiles.value.map(async (item) => {
     try {
       item.state = '上传中…'
+      let payload = item.file
+      let finalName = item.file.name
+      // 提速·③：超 1MB 的图片先 canvas 压缩（quality 0.7）再传，输出统一转 jpg
+      if (isImage(payload) && payload.size > COMPRESS_OVER_BYTES) {
+        const before = payload.size
+        payload = await compressImage(payload)
+        finalName = item.file.name.replace(/\.\w+$/, '') + '.jpg'
+        const saved = Math.max(0, Math.round((1 - payload.size / before) * 100))
+        item.compressed = `压缩：${fmtSize(before)} → ${fmtSize(payload.size)}（省 ${saved}%，quality ${COMPRESS_QUALITY}）`
+        log('图片压缩', `✓ ${item.file.name} ${item.compressed}`)
+      }
       const fd = new FormData()
-      fd.append('file', item.file)
+      fd.append('file', payload, finalName)
       const { data: res } = await http.post(`${BASE}/simple`, fd)
       const id = idFromUrl(res.data)
       item.state = `✓ 成功 id=${id}`
-      addToList(id, item.file.name, item.file.size)
-      log('小文件', `✓ ${item.file.name}（${fmtSize(item.file.size)}）直传成功，id=${id}`)
+      addToList(id, finalName, payload.size)
+      log('小文件', `✓ ${finalName}（${fmtSize(payload.size)}）直传成功，id=${id}`)
     } catch (err) {
       item.state = `✗ 失败：${err.response?.data?.message || err.message}`
       log('小文件', `✗ ${item.file.name} 失败：${err.response?.data?.message || err.message}`)
@@ -382,9 +415,47 @@ function fileNameFrom(cd) {
 
 const manualId = ref('')
 
+// ================= 卡片四：图片懒加载墙（第十一周提速·②） =================
+// 双保险：原生 loading="lazy"（浏览器可视区判断）+ IntersectionObserver（JS 按需赋 src）。
+// 首屏只加载可视区内的图片，滚动到哪加载到哪——F12 Network 面板可数请求条数验证。
+const wallImages = ref(
+  Array.from({ length: 16 }, (_, i) => {
+    const no = String(i + 1).padStart(2, '0')
+    return { src: `/scenic/scenic-${no}.svg`, name: `景区示例图 ${no}`, loaded: false }
+  }),
+)
+const wallEl = ref(null)
+const loadedCount = computed(() => wallImages.value.filter((m) => m.loaded).length)
+let wallObserver = null
+
+function onImgLoad(e) {
+  const src = e.target.getAttribute('data-src')
+  const item = wallImages.value.find((m) => m.src === src)
+  if (item) item.loaded = true
+}
+
 // ================= 计算属性 =================
 const uploadPct = computed(() => uploadProgress.value)
 const canResume = computed(() => paused.value && ctx && phase.value === 'uploading')
+
+onMounted(() => {
+  // IntersectionObserver：缩略图进入可视区（提前 100px 预载）才真正发起图片请求
+  wallObserver = new IntersectionObserver(
+    (entries) => {
+      for (const en of entries) {
+        if (en.isIntersecting) {
+          const img = en.target
+          img.src = img.getAttribute('data-src')
+          wallObserver.unobserve(img) // 加载一次就不再观察
+        }
+      }
+    },
+    { rootMargin: '100px' },
+  )
+  wallEl.value?.querySelectorAll('img[data-src]').forEach((img) => wallObserver.observe(img))
+})
+
+onBeforeUnmount(() => wallObserver?.disconnect())
 </script>
 
 <template>
@@ -438,14 +509,16 @@ const canResume = computed(() => paused.value && ctx && phase.value === 'uploadi
         <h3>② 小文件批量上传（问题 2）</h3>
         <p class="hint">≤5MB 直传 /files/simple；批量 = 多选后前端并发循环调用（Promise.all）</p>
         <div class="row">
-          <input type="file" multiple accept=".pdf,.txt,.md,.docx" @change="pickSmallFiles" />
+          <input type="file" multiple accept=".pdf,.txt,.md,.docx,.jpg,.jpeg,.png,.webp" @change="pickSmallFiles" />
           <button :disabled="!smallFiles.length || smallUploading" @click="uploadSmall">
             {{ smallUploading ? '并发上传中…' : '批量上传' }}
           </button>
         </div>
+        <p class="hint">提速·③：选超 1MB 的图片会先走 canvas 压缩（quality 0.7、长边 1600px）再上传，日志可见压缩前后体积对比</p>
         <ul class="small-list">
           <li v-for="(item, i) in smallFiles" :key="i">
-            {{ item.file.name }}（{{ fmtSize(item.file.size) }}）—— {{ item.state }}
+            <span>{{ item.file.name }}（{{ fmtSize(item.file.size) }}）{{ item.compressed ? '—— ' + item.compressed : '' }}</span>
+            <span>{{ item.state }}</span>
           </li>
         </ul>
       </section>
@@ -478,6 +551,19 @@ const canResume = computed(() => paused.value && ctx && phase.value === 'uploadi
         </div>
       </section>
     </div>
+
+    <!-- 卡片四：图片懒加载墙（第十一周提速·②） -->
+    <section ref="wallEl" class="card">
+      <h3>④ 图片懒加载墙（提速·②：loading="lazy" + IntersectionObserver 按需加载）</h3>
+      <p class="hint">F12 Network 面板验证：首屏只请求可视区内的图片，往下滚动才加载其余——"已加载 x/16" 实时计数。权限表格分页见"权限管理"页。</p>
+      <div class="wall">
+        <figure v-for="(img, i) in wallImages" :key="i">
+          <img :data-src="img.src" loading="lazy" alt="景区示例图" @load="onImgLoad" />
+          <figcaption>{{ img.name }}<span v-if="img.loaded"> · 已加载</span></figcaption>
+        </figure>
+      </div>
+      <p class="hint">已加载 {{ loadedCount }}/{{ wallImages.length }} 张</p>
+    </section>
 
     <!-- 操作日志：录屏讲解的关键输出 -->
     <section class="card">
@@ -521,4 +607,11 @@ button {
 button:disabled { opacity: .45; cursor: not-allowed; }
 button.ghost { background: #fff; color: #2f6fed; }
 input[type="file"] { font-size: 13px; }
+.wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.wall figure { margin: 0; }
+.wall img {
+  width: 100%; aspect-ratio: 640 / 420; object-fit: cover; display: block;
+  border-radius: 6px; background: #eef1f6;
+}
+.wall figcaption { font-size: 12px; color: #8a94a6; margin-top: 4px; }
 </style>

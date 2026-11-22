@@ -4,6 +4,7 @@ import AdminView from '../views/AdminView.vue'
 import FileView from '../views/FileView.vue'
 import LoginView from '../views/LoginView.vue'
 import PermView from '../views/PermView.vue'
+import ChatView from '../views/ChatView.vue'
 import { isLoggedIn, isAdmin } from '../api/auth'
 
 const router = createRouter({
@@ -13,6 +14,12 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: HomeView,
+    },
+    {
+      // 实时聊天：游客可用，不加权限守卫（第十一周任务 B1）
+      path: '/chat',
+      name: 'chat',
+      component: ChatView,
     },
     {
       path: '/admin',

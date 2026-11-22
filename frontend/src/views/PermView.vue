@@ -5,12 +5,22 @@
  * ③用户管理（角色下拉即改，sys_user_role 与 role 快照双写由后端事务保证）。
  * 仅 ADMIN 可用（路由守卫 + 后端 @SaCheckPermission("perm:manage") 双保险）。
  */
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { http } from '../api/http'
 
 const tab = ref('perms')
 const msg = ref('')
 const ok = ref(false)
+
+// ---- 前端分页（第十一周提速·②：权限/用户表格一次全量拉回，本地分页渲染，避免长表格一次塞满 DOM） ----
+const PAGE_SIZE = 8
+function usePagedList(source) {
+  const page = ref(1)
+  const totalPages = computed(() => Math.max(1, Math.ceil(source.value.length / PAGE_SIZE)))
+  const list = computed(() => source.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE))
+  const go = (p) => { page.value = Math.min(Math.max(1, p), totalPages.value) }
+  return { page, totalPages, list, go }
+}
 
 function flash(text, success = true) {
   msg.value = text
@@ -21,6 +31,7 @@ function flash(text, success = true) {
 // ---- ① 权限资源 ----
 const perms = ref([])
 const newPerm = reactive({ permCode: '', permName: '', permType: 2, url: '', parentId: 0 })
+const permPager = usePagedList(perms)
 
 async function loadPerms() {
   const { data: res } = await http.get('/permissions')
@@ -73,6 +84,7 @@ function togglePerm(id) {
 
 // ---- ③ 用户管理 ----
 const users = ref([])
+const userPager = usePagedList(users)
 
 async function loadUsers() {
   const { data: res } = await http.get('/users')
@@ -110,11 +122,11 @@ onMounted(() => {
 
     <!-- ① 权限资源 -->
     <section v-if="tab === 'perms'" class="card">
-      <h3>权限资源（菜单 / 按钮，权限资源 = URL）</h3>
+      <h3>权限资源（菜单 / 按钮，权限资源 = URL）<small class="page-hint">—— 第十一周提速·②：表格分页（每页 {{ PAGE_SIZE }} 条）</small></h3>
       <table>
         <thead><tr><th>ID</th><th>权限码</th><th>粒度</th><th>名称</th><th>URL</th><th>父级</th><th>状态</th></tr></thead>
         <tbody>
-          <tr v-for="p in perms" :key="p.permId">
+          <tr v-for="p in permPager.list.value" :key="p.permId">
             <td>{{ p.permId }}</td>
             <td><code>{{ p.permCode }}</code></td>
             <td>{{ typeName(p.permType) }}</td>
@@ -125,6 +137,11 @@ onMounted(() => {
           </tr>
         </tbody>
       </table>
+      <div class="pager">
+        <button :disabled="permPager.page.value <= 1" @click="permPager.go(permPager.page.value - 1)">上一页</button>
+        <span>第 {{ permPager.page.value }} / {{ permPager.totalPages.value }} 页（共 {{ perms.length }} 条）</span>
+        <button :disabled="permPager.page.value >= permPager.totalPages.value" @click="permPager.go(permPager.page.value + 1)">下一页</button>
+      </div>
 
       <h4>新增权限</h4>
       <div class="form-row">
@@ -163,7 +180,7 @@ onMounted(() => {
       <table>
         <thead><tr><th>ID</th><th>用户名</th><th>邮箱</th><th>角色</th><th>注册时间</th></tr></thead>
         <tbody>
-          <tr v-for="u in users" :key="u.userId">
+          <tr v-for="u in userPager.list.value" :key="u.userId">
             <td>{{ u.userId }}</td>
             <td>{{ u.username }}</td>
             <td>{{ u.email }}</td>
@@ -176,6 +193,11 @@ onMounted(() => {
           </tr>
         </tbody>
       </table>
+      <div class="pager">
+        <button :disabled="userPager.page.value <= 1" @click="userPager.go(userPager.page.value - 1)">上一页</button>
+        <span>第 {{ userPager.page.value }} / {{ userPager.totalPages.value }} 页（共 {{ users.length }} 条）</span>
+        <button :disabled="userPager.page.value >= userPager.totalPages.value" @click="userPager.go(userPager.page.value + 1)">下一页</button>
+      </div>
     </section>
   </div>
 </template>
@@ -202,4 +224,8 @@ th { background: #f0f4fb; }
 .banner.ok { background: #e8f7ee; color: #1fa667; }
 .banner.err { background: #fdeceb; color: #d93026; }
 code { background: #f0f4fb; padding: 1px 5px; border-radius: 4px; }
+.page-hint { font-size: 12px; color: #8a94a6; font-weight: normal; }
+.pager { display: flex; align-items: center; gap: 12px; margin-top: 10px; font-size: 13px; color: #556; }
+.pager button { padding: 5px 12px; border: 1px solid #dbe2ee; background: #fff; color: #2f6fed; border-radius: 6px; cursor: pointer; }
+.pager button:disabled { opacity: .45; cursor: not-allowed; }
 </style>

@@ -49,7 +49,9 @@ import java.util.stream.IntStream;
 public class FileStorageService {
 
     /** 类型白名单（sys_file.file_type 注释口径一致） */
-    private static final Set<String> ALLOWED_TYPES = Set.of("pdf", "txt", "md", "docx");
+    // 第十一周提速·③：图片上传走前端 canvas 压缩后再传，jpg/jpeg/png/webp 加入白名单
+    private static final Set<String> ALLOWED_TYPES = Set.of("pdf", "txt", "md", "docx",
+            "jpg", "jpeg", "png", "webp");
     /** 小文件直传上限 5MB */
     private static final long SIMPLE_MAX_SIZE = 5L * 1024 * 1024;
     private static final String DEFAULT_CHUNK_SIZE = "5242880"; // 5MB
