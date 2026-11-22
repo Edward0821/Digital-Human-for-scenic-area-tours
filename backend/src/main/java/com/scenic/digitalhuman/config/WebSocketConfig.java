@@ -2,12 +2,10 @@ package com.scenic.digitalhuman.config;
 
 import com.scenic.digitalhuman.chat.ChatWebSocketHandler;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
-import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 
 /**
  * WebSocket 配置（第十一周任务A，PPT P06"最小代码"口径）。
@@ -16,8 +14,12 @@ import org.springframework.web.socket.server.standard.ServletServerContainerFact
  * 跨域放行 setAllowedOriginPatterns("*")：WS 鉴权不在握手层做 CORS 卡控，
  * 而是握手后由 handler 校验 token 参数（见 ChatWebSocketHandler，PPT P16）。
  *
- * 空闲超时 90 秒 = 心跳 30 秒 ×3（容忍一次心跳丢失）。口径 PPT P07：
- * 超时太长连接被防火墙/NAT 回收，太短被当攻击扫描；30 秒心跳是业界常用值。
+ * 不配 ServletServerContainerFactoryBean（review 修正）：MockMvc 测试环境的
+ * MockServletContext 没有 jakarta.websocket ServerContainer，该 Bean 会导致
+ * @SpringBootTest 全部起不来（11-22 集成测试实测）。僵尸连接防护由两层覆盖：
+ * ① 前端 30s 心跳保活（PPT P07，连接上始终有流量，容器 idle 不会触发）；
+ * ② Redis 在线表 TTL 90s（PPT P13，进程被杀没注销也会自动过期）——
+ * 这才是防僵尸的正解，容器级空闲超时只是辅助，舍弃不影响正确性。
  */
 @Configuration
 @EnableWebSocket
@@ -30,14 +32,5 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(chatWebSocketHandler, "/ws/qa")
                 .setAllowedOriginPatterns("*");
-    }
-
-    /** 容器级参数：90 秒空闲超时；单帧 64KB 上限（防超大帧打内存） */
-    @Bean
-    public ServletServerContainerFactoryBean createWebSocketContainer() {
-        ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
-        container.setMaxSessionIdleTimeout(90_000L);
-        container.setMaxTextMessageBufferSize(64 * 1024);
-        return container;
     }
 }
