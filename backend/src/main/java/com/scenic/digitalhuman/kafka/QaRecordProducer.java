@@ -68,6 +68,14 @@ public class QaRecordProducer {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("messageId", java.util.UUID.randomUUID().toString());
         m.put("sessionId", r.getSessionId());
+        // 第十一周实时聊天：seq/clientId 有值才放（HTTP 批量问答两者为 NULL，不进 payload，
+        // 保持旧消息格式不变，consumer 端 null-safe 兼容两种链路）
+        if (r.getSeq() != null) {
+            m.put("seq", r.getSeq());
+        }
+        if (r.getClientId() != null) {
+            m.put("clientId", r.getClientId());
+        }
         m.put("userId", r.getUserId());
         m.put("question", r.getQuestion());
         m.put("answer", r.getAnswer());

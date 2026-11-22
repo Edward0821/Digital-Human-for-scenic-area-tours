@@ -37,7 +37,8 @@ public class SaTokenConfig implements WebMvcConfigurer {
             "/api/v1/routes",
             "/api/v1/qa",
             "/api/v1/dicts",
-            "/api/v1/files/simple"      // FILE-5 小文件直传（可选登录）
+            "/api/v1/files/simple",     // FILE-5 小文件直传（可选登录）
+            "/ws"                       // 第十一周：WS 握手鉴权在 handler 内做 token 校验，不走拦截器
     );
 
     @Override
