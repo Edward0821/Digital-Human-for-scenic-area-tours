@@ -19,6 +19,7 @@ function logout() {
       <span class="brand">景区导览服务 AI 数字人系统（第 7 组）</span>
       <nav>
         <RouterLink to="/">游客问答</RouterLink>
+        <RouterLink to="/chat">实时聊天</RouterLink>
         <RouterLink to="/admin">管理后台</RouterLink>
         <RouterLink to="/files">文件存储</RouterLink>
         <RouterLink v-if="authState.admin" to="/perm">权限管理</RouterLink>
