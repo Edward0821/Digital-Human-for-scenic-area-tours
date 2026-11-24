@@ -1,7 +1,7 @@
 // 第 7 组 · 接口设计说明书生成脚本（按老师模板结构：汇总表 + 编码表 + 逐接口四表 + 数据模型附录）
 // 数据源（工具定义，非手写）：
-//   1) scenic-api-apifox.json —— OpenAPI 3.0（Apifox 导入用同源文件，48 操作 / 18 模型）
-//   2) 接口清单-第7组.md —— v0.2 冻结底稿（全局约定 / 汇总表 / 安全策略 / 错误码表）
+//   1) scenic-api-apifox.json —— OpenAPI 3.0（Apifox 导入用同源文件，53 操作 / 18 模型）
+//   2) 接口清单-第7组.md —— v1.4 与实现同步底稿（全局约定 / 汇总表 / 安全策略 / 错误码表）
 // 运行：node build_api_doc.js ["输出名.docx"]
 const fs = require("fs");
 const path = require("path");
@@ -350,7 +350,7 @@ summaryLines.forEach((l) => {
   }
 });
 
-// ---------- 遍历 36 个操作（按 JSON 插入顺序 = 模块顺序） ----------
+// ---------- 遍历 53 个操作（按 JSON 插入顺序 = 模块顺序） ----------
 const operations = [];
 for (const [pPath, methods] of Object.entries(api.paths)) {
   for (const [method, op] of Object.entries(methods)) {
@@ -404,18 +404,18 @@ const children = [];
 // 1 引言
 children.push(h1("1  引言"));
 children.push(h2("1.1  编写目的"));
-children.push(p("本文档定义“景区导览服务 AI 数字人系统”的 RESTful 接口设计，覆盖全局约定、接口汇总、统一返回编码、48 个接口的请求/响应明细与数据模型，作为后端实现、前端联调与接口测试（Apifox）的统一契约依据，保证接口定义、文档与实现三者一致。"));
+children.push(p("本文档定义“景区导览服务 AI 数字人系统”的 RESTful 接口设计，覆盖全局约定、接口汇总、统一返回编码、53 个接口的请求/响应明细与数据模型，作为后端实现、前端联调与接口测试（Apifox）的统一契约依据，保证接口定义、文档与实现三者一致。"));
 children.push(p("预期读者：第 7 组全体开发成员、课程指导教师与评阅人。"));
 children.push(h2("1.2  设计依据与生成方式"));
 children.push(p("设计依据：数据库 14 张表（见《数据库设计说明书》）× 需求文档用例 × 课程接口规范（URL 命名、状态码口径、响应体字段、分页、安全策略）。推导方法：每张表找读写场景，支撑性表（sys_role、sys_user_role、conversation_log）内联在其他接口中，不单独开接口，实现“表全覆盖、接口不冗余”。"));
-children.push(p("生成方式：本文档由生成脚本从 OpenAPI 3.0 定义文件（scenic-api-apifox.json，已导入 Apifox）与接口清单底稿（v1.2 与实现同步版）自动生成，接口明细、示例值与数据模型均取自工具定义文件，不做人工誊抄，保证文档与接口定义同源。"));
+children.push(p("生成方式：本文档由生成脚本从 OpenAPI 3.0 定义文件（scenic-api-apifox.json，已导入 Apifox）与接口清单底稿（v1.4 与实现同步版）自动生成，接口明细、示例值与数据模型均取自工具定义文件，不做人工誊抄，保证文档与接口定义同源。"));
 
 // 2 全局约定
 children.push(h1("2  全局约定（所有接口共同遵守）"));
 children.push(...mdToChildren(sanitizeLines(mdSection(md, "## 一、", "## 二、"))));
 
 // 3 接口汇总表
-children.push(h1("3  接口汇总表（10 模块 · 48 个）"));
+children.push(h1("3  接口汇总表（12 模块 · 53 个）"));
 children.push(...mdToChildren(sanitizeLines(summaryLines)));
 
 // 4 统一返回编码表
@@ -424,7 +424,7 @@ children.push(...mdToChildren(sanitizeLines(mdSection(md, "## 五、", "## 六�
 
 // 5 接口明细
 children.push(h1("5  接口明细"));
-children.push(p("每接口给出基本信息、请求参数、返回示例与错误返回四要素；示例值取自接口定义文件。各接口响应体的字段结构、类型与取值约束见附录数据模型（A.1~A.18），两者结合即构成完整的响应参数说明。按模块 01~10 组织，共 48 个接口（另含实时聊天 WebSocket 端点 /ws/qa，不计入 REST 接口数）。"));
+children.push(p("每接口给出基本信息、请求参数、返回示例与错误返回四要素；示例值取自接口定义文件。各接口响应体的字段结构、类型与取值约束见附录数据模型（A.1~A.18），两者结合即构成完整的响应参数说明。按模块 01~12 组织，共 53 个接口（另含实时聊天 WebSocket 端点 /ws/qa，不计入 REST 接口数）。"));
 let opSeq = 0;
 let tableNo = 0; // 表号全文档连续分配（不再按每接口固定 4 张预留，消除缺号）
 tagOrder.forEach((tag, ti) => {
@@ -480,7 +480,7 @@ children.push(...mdToChildren(sanitizeLines(mdSection(md, "## 三、", "## 四�
 children.push(h1("7  设计完备性对照（数据表与 Redis 键归属）"));
 children.push(p("本章给出 14 张数据表与 Redis 键到接口的覆盖对照，验证接口设计的完备性：所有存储资源均有接口承载，所有运行时键均有读写归属。"));
 children.push(...mdToChildren(sanitizeLines(mdSection(md, "## 四、", "## 五、"))));
-children.push(p("对照结果表明：14 张数据表全部被接口覆盖，10 个 Redis 键全部有读写归属，48 个接口无孤儿资源。支撑性表（sys_role、sys_user_role、conversation_log）内联于业务接口中，不单独提供 CRUD——接口设计服务于业务用例，而非对每张表做简单映射。"));
+children.push(p("对照结果表明：16 张数据表（14 张业务表 + v1.4 新增 2 张审计表）全部被接口覆盖，11 个 Redis 键全部有读写归属，53 个接口无孤儿资源。支撑性表（sys_role、sys_user_role、conversation_log）内联于业务接口中，不单独提供 CRUD——接口设计服务于业务用例，而非对每张表做简单映射。"));
 
 // 附录 A 数据模型
 children.push(h1("附录  数据模型（18 个 Schema）"));
@@ -541,5 +541,5 @@ Packer.toBuffer(doc).then((buf) => {
   const out = process.argv[2] || path.join(__dirname, "第7组-景区导览服务AI数字人系统接口设计说明书.docx");
   fs.writeFileSync(out, buf);
   console.log("已生成：" + out);
-  console.log(`接口数：${operations.length}（应为 48）；模块数：${tagOrder.length}（应为 10）；数据模型：${schemaSeq} 个；鉴权映射命中：${Object.keys(summaryMap).length} 条`);
+  console.log(`接口数：${operations.length}（应为 53）；模块数：${tagOrder.length}（应为 12）；数据模型：${schemaSeq} 个；鉴权映射命中：${Object.keys(summaryMap).length} 条`);
 });
