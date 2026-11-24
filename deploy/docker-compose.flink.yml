@@ -1,0 +1,55 @@
+name: digital-human-flink
+
+# 第十二周任务②：Flink 集群（骨架演示用，1 JobManager + 1 TaskManager）。
+# 依赖 scenic-kafka（docker-compose.kafka.yml，已加 INTERNAL 监听器 scenic-kafka:29092）与
+# scenic-redis（docker-compose.yml 部署栈里的 Redis）。
+#
+# 网络说明：Kafka 对宿主机通告 localhost:9092（Spring Boot 用），
+# 对容器网络通告 scenic-kafka:29092（本 Flink 集群用），双监听器互不影响。
+#
+# 启动：
+#   docker compose -f docker-compose.kafka.yml up -d          # Kafka
+#   docker compose -f docker-compose.yml up -d scenic-redis   # Redis
+#   docker compose -f docker-compose.flink.yml up -d          # Flink 集群
+# 提交作业（jar 先拷进 JobManager）：
+#   docker cp ../flink-job/target/flink-profile-job.jar scenic-flink-jobmanager:/opt/
+#   docker exec scenic-flink-jobmanager flink run -c com.scenic.flinkjob.TrackProfileJob \
+#     /opt/flink-profile-job.jar --bootstrap scenic-kafka:29092 --redis-host scenic-redis
+
+services:
+  scenic-flink-jobmanager:
+    image: docker.m.daocloud.io/library/flink:1.20.0-java17
+    container_name: scenic-flink-jobmanager
+    ports:
+      - "127.0.0.1:8081:8081"   # Web UI：查看作业拓扑/检查点
+    environment:
+      - FLINK_PROPERTIES=jobmanager.rpc.address: jobmanager
+    command: jobmanager
+    volumes:
+      - flink-checkpoints:/opt/flink/checkpoints
+      # 挂载宿主机 jar 目录，免去每次 docker cp（路径含空格已加引号）
+      - "../flink-job/target:/opt/job-jar"
+    networks: [digital-human-kafka_default, digital-human_default, flink-internal]
+
+  scenic-flink-taskmanager:
+    image: docker.m.daocloud.io/library/flink:1.20.0-java17
+    container_name: scenic-flink-taskmanager
+    environment:
+      - FLINK_PROPERTIES=jobmanager.rpc.address: jobmanager
+    command: taskmanager
+    volumes:
+      - flink-checkpoints:/opt/flink/checkpoints
+    depends_on:
+      - scenic-flink-jobmanager
+    networks: [digital-human-kafka_default, digital-human_default, flink-internal]
+
+networks:
+  # 复用既有 compose 网络：Kafka 在 kafka_default，Redis(scenic-redis) 在 deploy 栈 default，两边都要连
+  digital-human-kafka_default:
+    external: true
+  digital-human_default:
+    external: true
+  flink-internal: {}
+
+volumes:
+  flink-checkpoints: {}
