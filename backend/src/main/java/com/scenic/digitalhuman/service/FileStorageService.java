@@ -211,7 +211,7 @@ public class FileStorageService {
             throw new BizException(ErrorCode.SYSTEM_ERROR, "读取上传内容失败");
         }
         try {
-            Files.createDirectories(finalPath.getParent()); // 当月目录可能还不存在（与分片路径保持一致）
+            Files.createDirectories(finalPath.getParent()); // 修复：按月目录不存在时直传落盘失败
             Files.copy(file.getInputStream(), finalPath,
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
