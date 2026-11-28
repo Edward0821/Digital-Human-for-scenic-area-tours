@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  日志采集配置（第十二周任务 A1 / 课件 demo2-demo4 全部考点）
+  Spring Boot 默认用 logback，无需加依赖，本文件放 resources 即自动生效。
+
+  六条验收点对应：
+  1. ConsoleAppender（开发看）+ RollingFileAppender（按天 + 单文件 10MB 切分）
+  2. SizeAndTimeBasedRollingPolicy：.gz 归档、maxHistory=30、totalSizeCap=200MB 双兜底
+  3. AsyncAppender 包住文件 appender：业务线程只进队列，不等慢磁盘（neverBlock=false）
+  4. 按包隔离：业务包 com.scenic.digitalhuman = DEBUG，root = INFO（第三方框架不刷屏）
+  5. 业务 logger additivity="false"：只走自己的 appender，不向 root 冒泡 → 控制台不重复
+  6. pattern 不含请求查询串 / Authorization 头（web 安全第 24 关：日志泄 token）
+
+  另：代码规范两条（demo2 考点）在本文件注释后附"规范提醒"，需业务代码配合：
+  - 异常对象作为最后一个参数传 log.error("xxx", e)，不 getMessage() 拼字符串（丢堆栈）
+  - 不 log-and-throw：中间层要么消费异常，要么原样上抛，由 GlobalExceptionHandler 统一收口
+-->
+<configuration scan="true" scanPeriod="60 seconds" debug="false">
+
+    <!-- 日志根目录：相对项目根，docker 部署时挂卷即可持久化 -->
+    <property name="LOG_DIR" value="logs"/>
+
+    <!-- 统一 pattern：时间 | 级别 | 线程 | logger | traceId(MDC，无则-) | 消息
+         刻意不含 %requestURL / %queryString / %header{Authorization}：
+         web 安全第 24 关——日志里写查询串和 Authorization 等于把 token 落盘留存 -->
+    <property name="CONSOLE_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) - %msg%n"/>
+    <property name="FILE_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} [%X{traceId:-}] - %msg%n"/>
+
+    <!-- ============ 1. 控制台 Appender（开发期实时看） ============ -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ============ 2. 滚动文件 Appender（按天 + 单文件 10MB 双切分） ============ -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/scenic.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- %i 是同一天内超过 10MB 后的序号，`.gz` 表示归档即压缩（省磁盘） -->
+            <fileNamePattern>${LOG_DIR}/scenic.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>10MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <!-- 双兜底：即使按天算没超 30 天，总大小到 200MB 也删最老的 -->
+            <totalSizeCap>200MB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${FILE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ============ 3. 异步 Appender（包住文件，业务线程不等待磁盘 IO） ============ -->
+    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="FILE"/>
+        <!-- 队列满时是否阻塞业务线程：false = 阻塞（不丢日志，课设口径；生产高吞吐可设 true 丢弃） -->
+        <neverBlock>false</neverBlock>
+        <!-- discardingThreshold 默认队列容量 20%；队列剩 20% 时开始丢 TRACE/DEBUG/INFO，
+             保留 WARN/ERROR——避免日志洪峰时把关键错误丢掉 -->
+        <queueSize>512</queueSize>
+        <includeCallerData>false</includeCallerData>
+    </appender>
+
+    <!-- ============ 4/5. 业务包独立 logger：DEBUG + additivity=false ============
+         additivity=false 是 demo4 核心考点：不让日志再冒泡到 root，
+         否则同一条业务日志会在控制台打两遍（业务 logger 一次 + root 一次）。 -->
+    <logger name="com.scenic.digitalhuman" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+    </logger>
+
+    <!-- root = INFO：Spring/Kafka/MyBatis 等第三方框架只打 INFO 以上，不刷屏 -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+    </root>
+
+    <!--
+      规范提醒（写业务代码时遵守，答辩会问）：
+      - 异常对象作为最后一个参数：log.error("[QA落库] 失败", e);  ✅ 保留完整堆栈
+        不要 log.error("[QA落库] 失败：" + e.getMessage());        ❌ 只剩一行消息，排障没堆栈
+      - 不 log-and-throw：中间层 catch 后要么自己消化（记日志后 return），
+        要么原样 throw 给 GlobalExceptionHandler 统一转 Result，
+        不要 catch 里 log.error 再 throw new RuntimeException(e) —— 同一异常被记两次。
+    -->
+</configuration>

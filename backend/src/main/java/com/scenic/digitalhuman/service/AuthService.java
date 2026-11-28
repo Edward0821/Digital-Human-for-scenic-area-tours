@@ -57,6 +57,7 @@ public class AuthService {
     private final VisitorMapper visitorMapper;
     private final StringRedisTemplate redis;
     private final CaptchaService captchaService;
+    private final LoginLogService loginLogService;
     private final SecureRandom random = new SecureRandom();
 
     /** BCryptPasswordEncoder：每次 encode 生成独立随机盐（盐内嵌密文），线程安全可复用 */
@@ -110,9 +111,31 @@ public class AuthService {
 
     // ================= 登录：双方式 + 验证码 + 统一提示 + 常数时间 =================
 
+    /**
+     * 登录入口（第十二周 A2 埋点）：无论成功失败都记一条登录日志。
+     * 把原登录逻辑改名 loginInner，这里包装 try-catch——失败也记（爆破审计信号）。
+     * 审计失败被 LoginLogService 内部吞掉，绝不影响登录本身。
+     */
     public Map<String, Object> login(String loginType, String username, String password,
                                      String email, String emailCode,
                                      String captchaId, String captchaCode, String clientIp) {
+        String logName = (username != null && !username.isBlank()) ? username : email;
+        try {
+            Map<String, Object> data = loginInner(loginType, username, password, email, emailCode,
+                    captchaId, captchaCode, clientIp);
+            loginLogService.record(logName, LoginLogService.currentUserId(), clientIp,
+                    true, null);
+            return data;
+        } catch (Exception e) {
+            loginLogService.record(logName, null, clientIp, false,
+                    LoginLogService.failReason(e));
+            throw e;
+        }
+    }
+
+    private Map<String, Object> loginInner(String loginType, String username, String password,
+                                           String email, String emailCode,
+                                           String captchaId, String captchaCode, String clientIp) {
         // 认证维度限流：登录 5 次/分·IP（外部评审第 9 条补的缺口，slide9"加限流防爆破"）
         rateLimit(clientIp);
 
