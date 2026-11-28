@@ -1,6 +1,10 @@
 package com.scenic.digitalhuman.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.scenic.digitalhuman.common.BizException;
+import com.scenic.digitalhuman.common.ErrorCode;
 import com.scenic.digitalhuman.entity.QaRecord;
 import com.scenic.digitalhuman.kafka.QaRecordProducer;
 import com.scenic.digitalhuman.mapper.QaRecordMapper;
@@ -9,14 +13,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.DigestUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -210,6 +217,100 @@ public class QaService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("messages", messages);
         result.put("lastSeq", lastSeq);
+        return result;
+    }
+
+    /** 满意度取值白名单（QA-2）：只接受 GOOD/BAD，其他一律 10003 格式错 */
+    private static final Set<String> SATISFACTION_VALUES = Set.of("GOOD", "BAD");
+
+    /**
+     * QA-2 满意度评价（第十二周追加任务·位 C）。
+     *
+     * 水平越权（IDOR）防护示范接口——答辩必讲：
+     * 服务端不信任请求体里的 userId，只认两种归属证据：
+     *   ① 登录态：record.user_id == 当前令牌解析出的 userId；
+     *   ② 游客态：record.session_id == 请求携带的 session_id（匿名提问留下的匿名会话锚点）。
+     * 两者都不匹配 → 403 + 20003。匿名评价必须带 sessionId，否则直接 10001（无归属证据）。
+     *
+     * 重复评价 → 409 + 20007（STATE_CONFLICT）。
+     * 并发兜底：UPDATE 带 `satisfaction IS NULL` 条件，抢不到的返回 0 行 → 同样按 409 处理，
+     * 避免两个请求同时读到的都是 NULL、双双写成功（单边校验挡不住并发竞态）。
+     */
+    @Transactional
+    public void feedback(Long recordId, String satisfaction, Long userId, String sessionId) {
+        if (satisfaction == null || !SATISFACTION_VALUES.contains(satisfaction)) {
+            throw new BizException(ErrorCode.BAD_FORMAT, "满意度只能是 GOOD 或 BAD");
+        }
+        QaRecord record = qaRecordMapper.selectById(recordId);
+        if (record == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "问答记录不存在");
+        }
+        if (record.getSatisfaction() != null) {
+            throw new BizException(ErrorCode.STATE_CONFLICT, "该问答已评价，不能重复评价");
+        }
+
+        boolean owned = userId != null && userId.equals(record.getUserId());
+        if (!owned && sessionId != null && !sessionId.isBlank()
+                && sessionId.equals(record.getSessionId())) {
+            owned = true;
+        }
+        if (!owned) {
+            log.warn("[QA-2] 越权评价拦截：recordId={} 请求用户={} 请求会话={} 记录用户={}",
+                    recordId, userId, sessionId, record.getUserId());
+            throw new BizException(ErrorCode.FORBIDDEN, "无权评价该问答记录");
+        }
+
+        int updated = qaRecordMapper.update(null, new LambdaUpdateWrapper<QaRecord>()
+                .eq(QaRecord::getId, recordId)
+                .isNull(QaRecord::getSatisfaction)
+                .set(QaRecord::getSatisfaction, satisfaction));
+        if (updated == 0) {
+            throw new BizException(ErrorCode.STATE_CONFLICT, "该问答已评价，不能重复评价");
+        }
+    }
+
+    /**
+     * QA-3 会话历史分页（第十二周追加任务·位 C）。
+     *
+     * 两条查询路径的索引取舍（契约 1.4 + 接口清单 QA-3 原注）：
+     * - 匿名：按 session_id 查 → 命中 idx_session_created(session_id, created_at)，天然有序，直接分页。
+     * - 登录：按 user_id 查 → DDL 刻意不建 (user_id, created_at) 索引（避免写放大），
+     *   走 idx_created_at 时间窗后内存过滤 user_id。课设千级记录规模代价可接受；
+     *   答辩口径：规模上量再加 (user_id, created_at) 联合索引。
+     *
+     * 出参严格按契约 1.4：total + has_more + list（不用 total/list 裸返回）。
+     */
+    public Map<String, Object> history(String sessionId, Long userId, long page, long size) {
+        LambdaQueryWrapper<QaRecord> query = new LambdaQueryWrapper<>();
+        if (userId != null) {
+            // 登录态：按 user_id 查全部历史；按 created_at 倒序引导 idx_created_at 扫描后过滤
+            query.eq(QaRecord::getUserId, userId);
+        } else {
+            // 匿名态：必须带 sessionId（Controller 已校验），走 idx_session_created
+            query.eq(QaRecord::getSessionId, sessionId);
+        }
+        query.orderByDesc(QaRecord::getCreatedAt).orderByDesc(QaRecord::getId);
+
+        Page<QaRecord> pageResult = qaRecordMapper.selectPage(new Page<>(page, size), query);
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (QaRecord r : pageResult.getRecords()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", r.getId());
+            item.put("sessionId", r.getSessionId());
+            item.put("question", r.getQuestion());
+            item.put("answer", r.getAnswer());
+            item.put("interactionType", r.getInteractionType());
+            item.put("answerType", r.getAnswerType());
+            item.put("satisfaction", r.getSatisfaction());
+            item.put("latencyMs", r.getLatencyMs());
+            item.put("createdAt", r.getCreatedAt());
+            list.add(item);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", pageResult.getTotal());
+        result.put("has_more", pageResult.getCurrent() < pageResult.getPages());
+        result.put("list", list);
         return result;
     }
 }
