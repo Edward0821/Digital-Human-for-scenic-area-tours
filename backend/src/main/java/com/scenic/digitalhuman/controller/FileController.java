@@ -70,6 +70,7 @@ public class FileController {
     }
 
     /** 通知后台重组：缺片返回缺失清单；全齐则顺序合并 + 整体 md5 终校 */
+    @com.scenic.digitalhuman.aop.OperationLog(action = "file:upload", targetType = "file", targetId = "#p0")
     @SaCheckPermission("file:manage")
     @PostMapping("/{id}/complete")
     public Result<String> complete(@PathVariable long id) {
@@ -77,6 +78,7 @@ public class FileController {
     }
 
     /** 小文件（≤5MB）直传，批量上传时前端并发循环调用本接口 */
+    @com.scenic.digitalhuman.aop.OperationLog(action = "file:upload", targetType = "file")
     @PostMapping("/simple")
     public Result<String> simple(@RequestParam("file") MultipartFile file) {
         return Result.success(fileStorageService.simpleUpload(file));

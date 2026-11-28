@@ -41,6 +41,7 @@ public class QaController {
     private final QaHotQuestionService hotQuestionService;
 
     /** 游客提问（QA-1）：同步返回答案，问答记录异步落库 */
+    @com.scenic.digitalhuman.aop.OperationLog(action = "qa:ask", targetType = "qa", targetId = "#p0.sessionId()")
     @PostMapping
     public Result<Map<String, Object>> ask(@Validated @RequestBody QaReq req) {
         // 课件口径：问题超 500 字 → 10002（不用 @Size 是为了让业务码精确到 BAD_PAYLOAD）
