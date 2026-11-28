@@ -245,10 +245,9 @@ public class QaService {
         if (record == null) {
             throw new BizException(ErrorCode.NOT_FOUND, "问答记录不存在");
         }
-        if (record.getSatisfaction() != null) {
-            throw new BizException(ErrorCode.STATE_CONFLICT, "该问答已评价，不能重复评价");
-        }
-
+        // 归属校验必须先于状态检查（组长 review 修正 11-28）：
+        // 若先查 satisfaction，陌生人可借 20007 探测"该记录已被评价"——顺序即泄漏。
+        // 正确顺序：先验证请求者身份（不归属一律 20003），身份过关后才允许看到记录状态。
         boolean owned = userId != null && userId.equals(record.getUserId());
         if (!owned && sessionId != null && !sessionId.isBlank()
                 && sessionId.equals(record.getSessionId())) {
@@ -258,6 +257,9 @@ public class QaService {
             log.warn("[QA-2] 越权评价拦截：recordId={} 请求用户={} 请求会话={} 记录用户={}",
                     recordId, userId, sessionId, record.getUserId());
             throw new BizException(ErrorCode.FORBIDDEN, "无权评价该问答记录");
+        }
+        if (record.getSatisfaction() != null) {
+            throw new BizException(ErrorCode.STATE_CONFLICT, "该问答已评价，不能重复评价");
         }
 
         int updated = qaRecordMapper.update(null, new LambdaUpdateWrapper<QaRecord>()
