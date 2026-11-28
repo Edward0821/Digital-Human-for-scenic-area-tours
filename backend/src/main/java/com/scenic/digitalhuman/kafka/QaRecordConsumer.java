@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.scenic.digitalhuman.chat.ChatSessionRegistry;
 import com.scenic.digitalhuman.entity.QaRecord;
 import com.scenic.digitalhuman.mapper.QaRecordMapper;
+import com.scenic.digitalhuman.service.QaHotQuestionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,6 +46,7 @@ public class QaRecordConsumer {
     private final QaRecordMapper qaRecordMapper;
     private final StringRedisTemplate redis;
     private final ChatSessionRegistry chatSessionRegistry;
+    private final QaHotQuestionService hotQuestionService;
 
     /** 每条消息处理延时（模拟推理/落库节奏，演示队列积压与消化；生产置 0） */
     @Value("${app.qa.consume-delay-ms:0}")
@@ -124,6 +126,10 @@ public class QaRecordConsumer {
                             record.getSessionId(), record.getSeq());
                 }
             }
+
+            // QA-4 写侧（第十二周）：落库成功后按问题文本 ZINCRBY 本周热门榜。
+            // 放在幂等去重之后 → 同一条消息重投不会重复计数；服务内部吞异常 → 榜单故障不影响 ack。
+            hotQuestionService.recordQuestion(record.getQuestion());
 
             // 处理成功才提交 offset（崩溃在 insert 后、ack 前：幂等键已占，重投会被跳过，不重复）
             ack.acknowledge();

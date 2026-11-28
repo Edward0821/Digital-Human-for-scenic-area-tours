@@ -4,13 +4,16 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.scenic.digitalhuman.common.BizException;
 import com.scenic.digitalhuman.common.ErrorCode;
 import com.scenic.digitalhuman.common.Result;
+import com.scenic.digitalhuman.service.QaHotQuestionService;
 import com.scenic.digitalhuman.service.QaService;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -35,6 +38,7 @@ public class QaController {
     private static final Set<String> INTERACTION_TYPES = Set.of("VOICE", "TEXT", "IMAGE");
 
     private final QaService qaService;
+    private final QaHotQuestionService hotQuestionService;
 
     /** 游客提问（QA-1）：同步返回答案，问答记录异步落库 */
     @PostMapping
@@ -51,15 +55,7 @@ public class QaController {
         }
 
         // 匿名可问：未登录 user_id 为 NULL，登录用户自动关联（水平越权无虞：只读自己的登录态）
-        Long userId = null;
-        try {
-            Object loginId = StpUtil.getLoginIdDefaultNull();
-            if (loginId != null) {
-                userId = Long.valueOf(loginId.toString());
-            }
-        } catch (Exception ignore) {
-            // 未登录场景：Sa-Token 上下文异常按匿名处理
-        }
+        Long userId = currentUserId();
 
         return Result.success(qaService.answer(req.sessionId(), userId, req.question(),
                 interactionType, "IMAGE".equals(interactionType) ? req.imageUrl() : null));
@@ -83,6 +79,82 @@ public class QaController {
             throw new BizException(ErrorCode.BAD_FORMAT, "afterSeq 不能为负数");
         }
         return Result.success(qaService.sync(sessionId, afterSeq));
+    }
+
+    /**
+     * QA-2 满意度评价（第十二周追加任务·位 C）：POST /api/v1/qa/records/{recordId}/feedback
+     * 可选鉴权——登录用户按 user_id 归属，匿名游客按 session_id 归属（服务端校验，防 IDOR）。
+     * sessionId 支持查询参数或 X-Session-Id 请求头两种携带方式（前端两种都在用）。
+     * 重复评价 409 + 20007；越权 403 + 20003；满意度非 GOOD/BAD → 10003。
+     */
+    @PostMapping("/records/{recordId}/feedback")
+    public Result<Void> feedback(@PathVariable Long recordId,
+                                 @Validated @RequestBody FeedbackReq req,
+                                 @RequestParam(required = false) String sessionId,
+                                 @RequestHeader(value = "X-Session-Id", required = false) String headerSessionId) {
+        if (recordId == null || recordId <= 0) {
+            throw new BizException(ErrorCode.BAD_PARAM, "recordId 必须是正整数");
+        }
+        String sid = (sessionId != null && !sessionId.isBlank()) ? sessionId : headerSessionId;
+        qaService.feedback(recordId, req.satisfaction(), currentUserId(), sid);
+        return Result.success();
+    }
+
+    /**
+     * QA-3 会话历史（第十二周追加任务·位 C）：GET /api/v1/qa/records?sessionId=&page=&size=
+     * 可选鉴权——登录按 user_id（idx_created_at 时间窗 + 内存过滤），匿名按 session_id（idx_session_created）。
+     * 匿名必须带 sessionId：否则没归属证据，直接 10001（与 QA-2 口径一致）。
+     * 分页严格按契约 1.4：page/size 入参，total + has_more + list 出参。
+     */
+    @GetMapping("/records")
+    public Result<Map<String, Object>> records(
+            @RequestParam(required = false) String sessionId,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") long size) {
+        Long userId = currentUserId();
+        if (userId == null && (sessionId == null || sessionId.isBlank())) {
+            throw new BizException(ErrorCode.BAD_PARAM, "匿名查询必须带 sessionId");
+        }
+        if (page < 1 || size < 1 || size > 100) {
+            throw new BizException(ErrorCode.BAD_PARAM, "page 从 1 开始，size 范围 1~100");
+        }
+        return Result.success(qaService.history(sessionId, userId, page, size));
+    }
+
+    /**
+     * QA-4 热门问题榜（第十二周追加任务·位 C）：GET /api/v1/qa/hot-questions?week=&limit=
+     * 公开接口（游客端 FAQ 展示）。读 Redis ZSet scenic:rank:hotq:{week}，
+     * week 缺省取当前 ISO 周号（2026-W48 形式），显式传 week 可验证跨周 key 隔离。
+     * limit 缺省 10，上限 50（防一次拉爆内存）。
+     */
+    @GetMapping("/hot-questions")
+    public Result<Map<String, Object>> hotQuestions(
+            @RequestParam(required = false) String week,
+            @RequestParam(defaultValue = "10") int limit) {
+        if (limit < 1 || limit > 50) {
+            throw new BizException(ErrorCode.BAD_PARAM, "limit 范围 1~50");
+        }
+        Map<String, Object> data = new java.util.LinkedHashMap<>();
+        String effectiveWeek = (week == null || week.isBlank())
+                ? QaHotQuestionService.currentWeek() : week;
+        data.put("week", effectiveWeek);
+        data.put("list", hotQuestionService.top(effectiveWeek, limit));
+        return Result.success(data);
+    }
+
+    /** 取当前登录用户 ID（可选鉴权接口共用）：异常/未登录一律按匿名处理 */
+    private Long currentUserId() {
+        try {
+            Object loginId = StpUtil.getLoginIdDefaultNull();
+            return loginId == null ? null : Long.valueOf(loginId.toString());
+        } catch (Exception ignore) {
+            // 未登录场景：Sa-Token 上下文异常按匿名处理（与 QA-1 原口径一致）
+            return null;
+        }
+    }
+
+    /** QA-2 请求体：满意度 GOOD/BAD（具体校验在 service，业务码精确到 10003） */
+    public record FeedbackReq(String satisfaction) {
     }
 
     public record QaReq(
